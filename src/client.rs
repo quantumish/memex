@@ -34,9 +34,18 @@ fn main() {
 		query: Query::GET,
 		entity: Entity::Block(pack(""), pack(""))
 	};
+	let mut response: [u8; 1024] = [0; 1024];
 	unsafe {
 		let buf = std::mem::transmute::<Request, [u8; std::mem::size_of::<Request>()]>(req);
 		socket.send_to(&buf, "127.0.0.1:34254");
 	}
+	let result: (usize, std::net::SocketAddr);
+	match socket.recv_from(&mut response) {
+		Ok(x) => result = x,
+		Err(_) => panic!("AAAAAA"),
+	}
+	match String::from_utf8(response[..result.0].to_vec()) {
+		Ok(x) => print!("{}", x),
+		Err(_) => panic!("AAhvgdsajssbvc"),
+	}
 }
-

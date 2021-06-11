@@ -58,6 +58,29 @@ impl Block {
 	fn add_tag(&mut self, tag: Tag) {
 		self.tags.push(tag);	
 	}
+
+	fn to_string(&self) -> String {
+		let mut msg: String = String::new();
+		msg.push_str("Start: ");
+		msg += &self.start.to_rfc2822();
+		msg.push_str("\nStop: ");
+		match self.end {
+			Some(x) => msg += &x.to_rfc2822(),
+			None => msg.push_str("None"),
+		}
+		msg.push_str("\nTags: ");
+		for i in self.tags.iter() {			
+			msg += &i.name;
+			msg.push_str(" ");
+		}
+		msg.push_str("\nProject: ");
+		match self.project.clone() {
+			Some(x) => msg += &x.name,
+			None => msg.push_str("None"),
+		}
+		msg.push_str("\n");
+		msg		
+	}
 }
 
 fn main() -> std::io::Result<()> {
@@ -86,7 +109,7 @@ fn main() -> std::io::Result<()> {
 			},
 			Query::GET => match req.entity {
 				Entity::Block(tag, proj) => {
-					println!("{}", current.tags[0].name);
+					socket.send_to(current.to_string().as_bytes(), src);
 				},
 				_ => (),
 			},
