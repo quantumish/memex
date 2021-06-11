@@ -25,6 +25,7 @@ struct Project {
 
 #[derive(Clone)]
 pub struct Block {
+	name: String,
 	start: DateTime<Local>,
 	end: Option<DateTime<Local>>,
 	tags: Vec<Tag>,
@@ -34,6 +35,7 @@ pub struct Block {
 impl Block {
 	fn new() -> Block {
 		Block {
+			name: String::new(),
 			start: Local::now(),
 			end: None,
 			tags: Vec::new(),
@@ -61,7 +63,9 @@ impl Block {
 
 	fn to_string(&self) -> String {
 		let mut msg: String = String::new();
-		msg.push_str("Start: ");
+		msg.push_str("Name: ");
+		msg += &self.name;
+		msg.push_str("\nStart: ");
 		msg += &self.start.to_rfc2822();
 		msg.push_str("\nStop: ");
 		match self.end {
@@ -97,18 +101,18 @@ fn main() -> std::io::Result<()> {
 		}
 		match req.query {
 			Query::ADD => match req.entity {
-				Entity::Block(tag, proj) => {
+				Entity::Block(name, proj) => {
 					current.stop();
 					cache.push(current.clone());
 					current = Block::new();
+					current.name = unpack(name);
 					current.project = Some(Project {name: unpack(proj)});
-					current.tags.push(Tag {name: unpack(tag)});
 				},
 				Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag)}),
 				Entity::Project(proj) => current.project = Some(Project {name: unpack(proj)}),
 			},
 			Query::GET => match req.entity {
-				Entity::Block(tag, proj) => {
+				Entity::Block(name, proj) => {
 					socket.send_to(current.to_string().as_bytes(), src);
 				},
 				_ => (),
