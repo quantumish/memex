@@ -61,7 +61,7 @@ fn main() -> std::io::Result<()> {
 		unsafe {
 			println!("{}, {}", amt, std::mem::size_of::<Request>());
 			let req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);
-			// println!("{:?}", req); 
+			println!("{:?}", req); 
 		}		
 	}	
 }

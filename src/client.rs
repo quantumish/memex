@@ -19,10 +19,9 @@ fn main() {
 		Ok(x) => socket = x,
 		Err(_) => panic!("AA"),
 	}
-	let tags = vec![pack("test"), pack("test2")];
 	let req : Request = Request {
 		query: Query::ADD,
-		entity: Entity::Block(tags, pack("No."))
+		entity: Entity::Block(pack("abc"), pack("No."))
 	};
 	// Time to commit a gamer moment.
 	unsafe {

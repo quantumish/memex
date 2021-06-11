@@ -10,7 +10,7 @@ pub enum Query {
 
 #[derive(Debug)]
 pub enum Entity {
-	Block(Vec<[u8; MAX_NAME]>, [u8; MAX_NAME]),
+	Block([u8; MAX_NAME], [u8; MAX_NAME]),
 	Tag([u8; MAX_NAME]),
 	Project([u8; MAX_NAME]),
 }
@@ -20,4 +20,6 @@ pub struct Request {
 	pub query: Query,
 	pub entity: Entity,
 }
+
+
 
