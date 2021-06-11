@@ -1,50 +1,57 @@
-use std::time;
 use std::thread;
+use std::time;
+use chrono::Duration;
+use chrono::DateTime;
+use chrono::Local;
 
 struct Tag {
 	name: String
 }
 
-struct Block {
-	start: time::SystemTime,
-	end: Option<time::SystemTime>,
+struct Project {
+	name: String
+}
+
+pub struct Block {
+	start: DateTime<Local>,
+	end: Option<DateTime<Local>>,
 	tags: Vec<Tag>,
+	project: Option<Project>,
 }
 
 impl Block {
 	fn new() -> Block {
 		Block {
-			start: time::SystemTime::now(),
-			end: None
+			start: Local::now(),
+			end: None,
+			tags: Vec::new(),
+			project: None,
 		}
 	}
 
-	fn get_duration(&self) -> time::Duration {
+	fn get_duration(&self) -> Duration {
 		match self.end {
-			Some(x) => {
-				match self.end.duration_since(self.start) {
-					Ok(duration) => duration,
-					Err(_e) => panic!("Subtraction somehow doesn't work.")
-				}
-			}
-			None => {
-				match self.start.elapsed() {
-					Ok(duration) => duration,
-					Err(_e) => panic!("Handling errors is for wimps.")
-				}
-			}
+			Some(x) => x.signed_duration_since(self.start),
+			None => Local::now().signed_duration_since(self.start),
 		}
 	}
 
-	fn stop(&self) {
-		self.end = time::SystemTime::now();
+	fn stop(&mut self) {
+		match self.end {
+			Some(_x) => panic!("Tried to stop block that is already stopped!"),
+			None => self.end = Some(Local::now()),
+		}
+	}
+
+	fn add_tag(&mut self, tag: Tag) {
+		tags.push(tag);
 	}
 }
 
 fn main() {
-	println!("Hello, world!");
-	let block = Block::new();
+	println!("sz: {}!", std::mem::size_of::<i32>());
+	let mut block = Block::new();
 	thread::sleep(time::Duration::from_secs(1));
-	println!("{}", block.get_duration().as_secs());
+	println!("{}", block.get_duration());
 	block.stop();
 }
