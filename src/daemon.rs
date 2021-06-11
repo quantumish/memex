@@ -3,6 +3,7 @@ use std::time;
 use chrono::Duration;
 use chrono::DateTime;
 use chrono::Local;
+use std::net::UdpSocket;
 
 struct Tag {
 	name: String
@@ -44,14 +45,19 @@ impl Block {
 	}
 
 	fn add_tag(&mut self, tag: Tag) {
-		tags.push(tag);
+		self.tags.push(tag);
 	}
 }
 
-fn main() {
-	println!("sz: {}!", std::mem::size_of::<i32>());
-	let mut block = Block::new();
-	thread::sleep(time::Duration::from_secs(1));
-	println!("{}", block.get_duration());
-	block.stop();
+fn main() -> std::io::Result<()> {
+	let current: Block;
+	let mut socket = UdpSocket::bind("127.0.0.1:34254")?;
+	loop {
+		let mut buf = [0; 10];
+		let (amt, src) = socket.recv_from(&mut buf)?;
+		match std::str::from_utf8(&buf) {
+			Ok(x) => println!("{}", x),
+			Err(_) => panic!("Failed to convert to string!")
+		}
+	}
 }
