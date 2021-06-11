@@ -1,0 +1,16 @@
+[package]
+name = "memex"
+version = "0.1.0"
+edition = "2018"
+
+[[bin]]
+name = "memexd"
+path = "src/daemon.rs"
+
+[[bin]]
+name = "memex"
+path = "src/client.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
