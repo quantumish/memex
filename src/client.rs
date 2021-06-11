@@ -2,6 +2,8 @@ use std::net::UdpSocket;
 pub mod requests;
 pub use crate::requests::*;
 use std::thread;
+use clap::{AppSettings, Clap};
+
 
 fn pack(s: &String) -> [u8; MAX_NAME] {
 	let chars: Vec<char> = s.chars().collect();
@@ -36,20 +38,7 @@ fn add_block(socket: &UdpSocket, name: String, tags: Vec<String>, proj: String) 
 	}
 }
 
-fn main() {
-	let socket;
-	match UdpSocket::bind("127.0.0.1:34256") {
-		Ok(x) => socket = x,
-		Err(_) => panic!("AA"),
-	}
-	let tags = vec![String::from("test"), String::from("insanity"), String::from("rust")];
-	add_block(&socket, String::from("Memex dev time"), tags, String::from("memex"));
-	// let req : Request = Request {
-	// 	query: Query::ADD,
-	// 	entity: Entity::Block(pack("abc"), pack("No."))
-	// };
-	// send_request(&socket, req);
-	// thread::sleep(std::time::Duration::from_secs(1));
+fn get_block(socket: &UdpSocket) {
 	let req : Request = Request {
 		query: Query::GET,
 		entity: Entity::Block(pack(&String::new()), pack(&String::new()))
@@ -65,4 +54,62 @@ fn main() {
 		Ok(x) => print!("{}", x),
 		Err(_) => panic!("AAhvgdsajssbvc"),
 	}
+}
+
+#[derive(Clap)]
+#[clap(version = "1.0", author = "quantumish")]
+#[clap(setting = AppSettings::ColoredHelp)]
+struct Opts {
+	#[clap(subcommand)]
+	subcmd: QueryCmd,
+}
+
+#[derive(Clap)]
+enum QueryCmd {
+	Add(Add),
+	Get(Get),
+}
+
+#[derive(Clap)]
+struct Add {
+	Block(Block),
+	Tag(Tag),
+}
+
+#[derive(Clap)]
+struct Block {
+	#[clap(short)]
+	name: String,
+	#[clap(short)]
+	tags: String,
+	#[clap(short)]
+	project: String,
+}
+
+#[derive(Clap)]
+struct Tag {
+	#[clap(short)]
+	name: String,
+}
+
+#[derive(Clap)]
+struct Get {}
+
+fn main() {
+	let opts: Opts = Opts::parse();
+	let socket;
+	match UdpSocket::bind("127.0.0.1:34256") {
+		Ok(x) => socket = x,
+		Err(_) => panic!("AA"),
+	}
+	match opts.subcmd {
+		QueryCmd::Add(e) => {
+			match e {
+				Block => add_block(&socket, b.name, b.tags.split(",")
+										   .map(str::to_string).collect(), b.project),
+				QueryCmd::Get => get_block(&socket),
+			}
+		}
+	}
+
 }

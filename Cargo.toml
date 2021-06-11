@@ -15,3 +15,4 @@ path = "src/client.rs"
 
 [dependencies]
 chrono = "0.4"
+clap = "3.0.0-beta.2"
