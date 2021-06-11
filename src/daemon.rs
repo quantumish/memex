@@ -1,8 +1,10 @@
+pub mod requests;
+pub use crate::requests::*;
+
+
 use std::thread;
 use std::time;
-use chrono::Duration;
-use chrono::DateTime;
-use chrono::Local;
+use chrono::{Duration, DateTime, Local};
 use std::net::UdpSocket;
 
 struct Tag {
@@ -45,7 +47,7 @@ impl Block {
 	}
 
 	fn add_tag(&mut self, tag: Tag) {
-		self.tags.push(tag);
+		self.tags.push(tag);	
 	}
 }
 
@@ -53,11 +55,8 @@ fn main() -> std::io::Result<()> {
 	let current: Block;
 	let mut socket = UdpSocket::bind("127.0.0.1:34254")?;
 	loop {
-		let mut buf = [0; 10];
-		let (amt, src) = socket.recv_from(&mut buf)?;
-		match std::str::from_utf8(&buf) {
-			Ok(x) => println!("{}", x),
-			Err(_) => panic!("Failed to convert to string!")
-		}
-	}
+		// let mut buf = [0; std::mem::size_of::<Request>];
+		// let (amt, src) = socket.recv_from(&mut buf)?;
+			
+	}	
 }
