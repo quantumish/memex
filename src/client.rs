@@ -2,16 +2,27 @@ use std::net::UdpSocket;
 pub mod requests;
 pub use crate::requests::*;
 
+fn pack(s: &str) -> [u8; MAX_NAME] {
+	let chars: Vec<char> = s.chars().collect();
+	let length = chars.len();
+	if (length > MAX_NAME) {panic!("String too big to pack!");}
+	let mut tmp: [u8; MAX_NAME] = [0; MAX_NAME];
+	for i in 0..length {
+		tmp[i] = chars[i] as u8;
+	}
+	tmp
+}
+
 fn main() {
 	let socket;
 	match UdpSocket::bind("127.0.0.1:34256") {
 		Ok(x) => socket = x,
 		Err(_) => panic!("AA"),
 	}
-	let tags = vec![String::from("test"), String::from("test2")];
+	let tags = vec![pack("test"), pack("test2")];
 	let req : Request = Request {
 		query: Query::ADD,
-		entity: Entity::Block(tags, String::from("No."))
+		entity: Entity::Block(tags, pack("No."))
 	};
 	// Time to commit a gamer moment.
 	unsafe {

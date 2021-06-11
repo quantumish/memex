@@ -55,8 +55,13 @@ fn main() -> std::io::Result<()> {
 	let current: Block;
 	let mut socket = UdpSocket::bind("127.0.0.1:34254")?;
 	loop {
-		// let mut buf = [0; std::mem::size_of::<Request>];
-		// let (amt, src) = socket.recv_from(&mut buf)?;
-			
+		let mut buf = [0; std::mem::size_of::<Request>()];
+		let (amt, src) = socket.recv_from(&mut buf)?;
+		// Time to commit a gamer moment.
+		unsafe {
+			println!("{}, {}", amt, std::mem::size_of::<Request>());
+			let req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);
+			// println!("{:?}", req); 
+		}		
 	}	
 }
