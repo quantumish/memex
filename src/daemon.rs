@@ -1,20 +1,29 @@
 pub mod requests;
 pub use crate::requests::*;
 
-
 use std::thread;
 use std::time;
 use chrono::{Duration, DateTime, Local};
 use std::net::UdpSocket;
 
+fn unpack(s: [u8; MAX_NAME]) -> String {
+	match std::str::from_utf8(&s) {
+		Ok(x) => String::from(x),
+		Err(_x) => panic!("Failed to unpack."),
+	}
+}
+
+#[derive(Clone)]
 struct Tag {
 	name: String
 }
 
+#[derive(Clone)]
 struct Project {
 	name: String
 }
 
+#[derive(Clone)]
 pub struct Block {
 	start: DateTime<Local>,
 	end: Option<DateTime<Local>>,
@@ -52,16 +61,36 @@ impl Block {
 }
 
 fn main() -> std::io::Result<()> {
-	let current: Block;
+	let mut cache: Vec<Block> = Vec::new();
+	let mut current: Block = Block::new();
 	let mut socket = UdpSocket::bind("127.0.0.1:34254")?;
 	loop {
 		let mut buf = [0; std::mem::size_of::<Request>()];
 		let (amt, src) = socket.recv_from(&mut buf)?;
+		let req: Request;
 		// Time to commit a gamer moment.
 		unsafe {
-			println!("{}, {}", amt, std::mem::size_of::<Request>());
-			let req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);
-			println!("{:?}", req); 
-		}		
+			req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);
+		}
+		match req.query {
+			Query::ADD => match req.entity {
+				Entity::Block(tag, proj) => {
+					current.stop();
+					cache.push(current.clone());
+					current = Block::new();
+					current.project = Some(Project {name: unpack(proj)});
+					current.tags.push(Tag {name: unpack(tag)});
+				},
+				Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag)}),
+				Entity::Project(proj) => current.project = Some(Project {name: unpack(proj)}),
+			},
+			Query::GET => match req.entity {
+				Entity::Block(tag, proj) => {
+					println!("{}", current.tags[0].name);
+				},
+				_ => (),
+			},
+			_ => (),
+		}
 	}	
 }
