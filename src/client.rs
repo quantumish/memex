@@ -4,7 +4,6 @@ pub use crate::requests::*;
 use std::thread;
 use clap::{AppSettings, Clap};
 use crossterm::style::{Attribute::*, Color::*};
-use minimad::mad_inline;
 use termimad::*;
 use std::result;
 
@@ -17,6 +16,16 @@ fn pack(s: &String) -> [u8; MAX_NAME] {
 		tmp[i] = chars[i] as u8;
 	}
 	tmp
+}
+
+fn fail(skin: &termimad::MadSkin, activity: &str, what: &str) {
+	skin.print_inline(&format!("** ✗ Failed to {} ({})!**\n", activity, what)[..]);
+	std::process::exit(1);
+}
+
+fn success(skin: &termimad::MadSkin, activity: &str) {
+	skin.print_inline(&format!("* ✓ Successfully {}!*\n", activity)[..]);
+	std::process::exit(0);
 }
 
 fn send_request(socket: &UdpSocket, req: Request) -> result::Result<(), &'static str> {
@@ -39,14 +48,12 @@ fn send_request(socket: &UdpSocket, req: Request) -> result::Result<(), &'static
 
 fn add_block(socket: &UdpSocket, name: String, tags: Vec<String>, proj: String) -> result::Result<(), &'static str> {
 	let req : Request = Request {
-		query: Query::ADD,
-		entity: Entity::Block(pack(&name), pack(&proj)),
+		query: Query::ADD(Entity::Block(pack(&name), pack(&proj))),
 	};
 	send_request(&socket, req)?;
 	for tag in tags.iter() {
 		let req : Request = Request {
-			query: Query::ADD,
-			entity: Entity::Tag(pack(&tag)),
+			query: Query::ADD(Entity::Tag(pack(&tag))),
 		};
 		send_request(&socket, req)?;
 	}
@@ -55,8 +62,7 @@ fn add_block(socket: &UdpSocket, name: String, tags: Vec<String>, proj: String) 
 
 fn add_tag(socket: &UdpSocket, name: String) -> result::Result<(), &'static str> {
 	let req : Request = Request {
-		query: Query::ADD,
-		entity: Entity::Tag(pack(&name)),
+		query: Query::ADD(Entity::Tag(pack(&name))),
 	};
 	send_request(&socket, req)?;
 	return Ok(());
@@ -64,18 +70,17 @@ fn add_tag(socket: &UdpSocket, name: String) -> result::Result<(), &'static str>
 
 fn get_block(socket: &UdpSocket) {
 	let req : Request = Request {
-		query: Query::GET,
-		entity: Entity::Block(pack(&String::new()), pack(&String::new()))
+		query: Query::GET(Specifier::Relative(0)),
 	};
 	let mut response: [u8; 1024] = [0; 1024];
-	send_request(&socket, req);
 	let result: (usize, std::net::SocketAddr);
+	send_request(&socket, req);
 	match socket.recv_from(&mut response) {
 		Ok(x) => result = x,
 		Err(_) => panic!("AAAAAA"),
 	}
 	match String::from_utf8(response[..result.0].to_vec()) {
-		Ok(x) => print!("{}", x),
+		Ok(x) => print!("aa {}", x),
 		Err(_) => panic!("AAhvgdsajssbvc"),
 	}
 }
@@ -123,7 +128,10 @@ struct Tag {
 }
 
 #[derive(Clap)]
-struct Get {}
+struct Get {
+	#[clap(short, default_value = "0")]
+	relative: usize,
+}
 
 fn main() {
 	let opts: Opts = Opts::parse();
@@ -141,14 +149,12 @@ fn main() {
 				EntityCmd::Block(b) => {
 					add_block(&socket, b.name, b.tags.split(",")
 							  .map(str::to_string).collect(), b.project);
-					skin.print_inline("* ✓ Successfully started new block!*\n");
+					success(&skin, "started new block");
 				},
 				EntityCmd::Tag(t) => {
 					match add_tag(&socket, t.name) {
-						Ok(_) => skin.print_inline("* ✓ Successfully added a tag to existing block!*\n"),
-						Err(s) => {
-							skin.print_inline(&format!("** ✗ Failed to add tag to existing block ({})!**\n", s)[..])
-						},
+						Ok(_) => success(&skin, "added tag to existing block"),
+						Err(s) => fail(&skin, "add tag to existing block", s),
 					}
 				},
 			}

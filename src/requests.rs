@@ -1,22 +1,26 @@
+pub use chrono::{Duration, DateTime, Local};
 pub const MAX_NAME: usize = 16;
 
-#[derive(Debug)]
 pub enum Query {
-	EDIT,
-	GET,
-	ADD,
-	DEL,
+	GET(Specifier),
+	ADD(Entity),
+	// DEL,
 }
 
-#[derive(Debug)]
+pub enum Specifier {
+	Relative(usize),
+	// Id(ID),
+	Time(DateTime<Local>),
+	TimeRange(DateTime<Local>, DateTime<Local>),
+}
+
 pub enum Entity {
 	Block([u8; MAX_NAME], [u8; MAX_NAME]),
 	Tag([u8; MAX_NAME]),
 	Project([u8; MAX_NAME]),
 }
 
-#[derive(Debug)]
 pub struct Request {
 	pub query: Query,
-	pub entity: Entity,
+	// pub BULK: bool
 }

@@ -103,8 +103,10 @@ fn main() -> std::io::Result<()> {
 		unsafe {
 			req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);
 		}
+		// TODO: TCP is needed.
+		std::thread::sleep(std::time::Duration::from_millis(500));
 		match req.query {
-			Query::ADD => match req.entity {
+			Query::ADD(e) => match e {
 				Entity::Block(name, proj) => {
 					current.stop();
 					cache.push(current.clone());
@@ -115,9 +117,14 @@ fn main() -> std::io::Result<()> {
 				Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag)}),
 				Entity::Project(proj) => current.project = Some(Project {name: unpack(proj)}),
 			},
-			Query::GET => match req.entity {
-				Entity::Block(name, proj) => {
-					socket.send_to(current.to_string().as_bytes(), src);
+			Query::GET(s) => match s {
+				Specifier::Relative(rel) => {
+					if (rel == 0) {
+						print!("{}", current.to_string());
+						socket.send_to(current.to_string().as_bytes(), src);
+					} else {
+						socket.send_to(cache[cache.len() - rel].to_string().as_bytes(), src);
+					}
 				},
 				_ => (),
 			},
