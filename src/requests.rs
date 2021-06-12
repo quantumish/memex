@@ -4,7 +4,7 @@ pub const MAX_NAME: usize = 16;
 pub enum Query {
 	EDIT,
 	GET,
-	ADD,	
+	ADD,
 	DEL,
 }
 
@@ -20,6 +20,3 @@ pub struct Request {
 	pub query: Query,
 	pub entity: Entity,
 }
-
-
-

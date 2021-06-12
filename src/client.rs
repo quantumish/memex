@@ -3,7 +3,10 @@ pub mod requests;
 pub use crate::requests::*;
 use std::thread;
 use clap::{AppSettings, Clap};
-
+use crossterm::style::{Attribute::*, Color::*};
+use minimad::mad_inline;
+use termimad::*;
+use std::result;
 
 fn pack(s: &String) -> [u8; MAX_NAME] {
 	let chars: Vec<char> = s.chars().collect();
@@ -16,26 +19,47 @@ fn pack(s: &String) -> [u8; MAX_NAME] {
 	tmp
 }
 
-fn send_request(socket: &UdpSocket, req: Request) {
+fn send_request(socket: &UdpSocket, req: Request) -> result::Result<(), &'static str> {
 	unsafe {
 		let buf = std::mem::transmute::<Request, [u8; std::mem::size_of::<Request>()]>(req);
 		socket.send_to(&buf, "127.0.0.1:34254");
 	}
+	let mut buf: [u8; 16] = [0; 16];
+	socket.set_read_timeout(Some(std::time::Duration::new(1,0)));
+	match socket.recv_from(&mut buf) {
+		Ok(_) => {
+			if (buf[0] != 1) {
+				return Err("failed to recieve response from daemon");
+			}
+			Ok(())
+		},
+		Err(x) => Err("failed to read from socket"),
+	}
 }
 
-fn add_block(socket: &UdpSocket, name: String, tags: Vec<String>, proj: String) {
+fn add_block(socket: &UdpSocket, name: String, tags: Vec<String>, proj: String) -> result::Result<(), &'static str> {
 	let req : Request = Request {
 		query: Query::ADD,
 		entity: Entity::Block(pack(&name), pack(&proj)),
 	};
-	send_request(&socket, req);
+	send_request(&socket, req)?;
 	for tag in tags.iter() {
 		let req : Request = Request {
 			query: Query::ADD,
 			entity: Entity::Tag(pack(&tag)),
 		};
-		send_request(&socket, req);
+		send_request(&socket, req)?;
 	}
+	return Ok(());
+}
+
+fn add_tag(socket: &UdpSocket, name: String) -> result::Result<(), &'static str> {
+	let req : Request = Request {
+		query: Query::ADD,
+		entity: Entity::Tag(pack(&name)),
+	};
+	send_request(&socket, req)?;
+	return Ok(());
 }
 
 fn get_block(socket: &UdpSocket) {
@@ -72,6 +96,12 @@ enum QueryCmd {
 
 #[derive(Clap)]
 struct Add {
+	#[clap(subcommand)]
+	subcmd: EntityCmd,
+}
+
+#[derive(Clap)]
+enum EntityCmd {
 	Block(Block),
 	Tag(Tag),
 }
@@ -97,19 +127,33 @@ struct Get {}
 
 fn main() {
 	let opts: Opts = Opts::parse();
+	let mut skin = MadSkin::default();
+	skin.italic.set_fg(Green);
+	skin.bold.set_fg(Red);
 	let socket;
 	match UdpSocket::bind("127.0.0.1:34256") {
 		Ok(x) => socket = x,
 		Err(_) => panic!("AA"),
 	}
 	match opts.subcmd {
-		QueryCmd::Add(e) => {
-			match e {
-				Block => add_block(&socket, b.name, b.tags.split(",")
-										   .map(str::to_string).collect(), b.project),
-				QueryCmd::Get => get_block(&socket),
+		QueryCmd::Add(query) => {
+			match query.subcmd {
+				EntityCmd::Block(b) => {
+					add_block(&socket, b.name, b.tags.split(",")
+							  .map(str::to_string).collect(), b.project);
+					skin.print_inline("* ✓ Successfully started new block!*\n");
+				},
+				EntityCmd::Tag(t) => {
+					match add_tag(&socket, t.name) {
+						Ok(_) => skin.print_inline("* ✓ Successfully added a tag to existing block!*\n"),
+						Err(s) => {
+							skin.print_inline(&format!("** ✗ Failed to add tag to existing block ({})!**\n", s)[..])
+						},
+					}
+				},
 			}
-		}
+		},
+		QueryCmd::Get(_) => get_block(&socket),
 	}
 
 }

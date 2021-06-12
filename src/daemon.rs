@@ -4,7 +4,7 @@ pub use crate::requests::*;
 use std::thread;
 use std::time;
 use chrono::{Duration, DateTime, Local};
-use std::net::UdpSocket;
+use std::net::{UdpSocket, SocketAddr};
 
 fn unpack(s: [u8; MAX_NAME]) -> String {
 	match std::str::from_utf8(&s) {
@@ -58,7 +58,7 @@ impl Block {
 	}
 
 	fn add_tag(&mut self, tag: Tag) {
-		self.tags.push(tag);	
+		self.tags.push(tag);
 	}
 
 	fn to_string(&self) -> String {
@@ -73,7 +73,7 @@ impl Block {
 			None => msg.push_str("None"),
 		}
 		msg.push_str("\nTags: ");
-		for i in self.tags.iter() {			
+		for i in self.tags.iter() {
 			msg += &i.name;
 			msg.push_str(" ");
 		}
@@ -83,8 +83,12 @@ impl Block {
 			None => msg.push_str("None"),
 		}
 		msg.push_str("\n");
-		msg		
+		msg
 	}
+}
+
+fn confirm(socket: &UdpSocket, src: &SocketAddr) {
+	socket.send_to(&[1; 1], src);
 }
 
 fn main() -> std::io::Result<()> {
@@ -119,5 +123,6 @@ fn main() -> std::io::Result<()> {
 			},
 			_ => (),
 		}
-	}	
+		confirm(&socket, &src); // TODO: actual error handling
+	}
 }

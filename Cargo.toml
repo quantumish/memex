@@ -16,3 +16,6 @@ path = "src/client.rs"
 [dependencies]
 chrono = "0.4"
 clap = "3.0.0-beta.2"
+termimad = "0.10"
+crossterm = "0.19.0"
+minimad = "0.8.0"
