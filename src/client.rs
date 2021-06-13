@@ -47,31 +47,31 @@ fn send_request(mut stream: &TcpStream, req: Request) -> std::result::Result<(),
 	Ok(())
 }
 
-// fn add_block(socket: &UdpSocket, name: String, tags: Vec<String>, proj: String) -> result::Result<(), &'static str> {
-// 	let req : Request = Request {
-// 		query: Query::ADD(Entity::Block(pack(&name), pack(&proj))),
-// 	};
-// 	send_request(&socket, req)?;
-// 	for tag in tags.iter() {
-// 		let req : Request = Request {
-// 			query: Query::ADD(Entity::Tag(pack(&tag))),
-// 		};
-// 		send_request(&socket, req)?;
-// 	}
-// 	return Ok(());
-// }
-
-// fn add_tag(socket: &UdpSocket, name: String) -> result::Result<(), &'static str> {
-// 	let req : Request = Request {
-// 		query: Query::ADD(Entity::Tag(pack(&name))),
-// 	};
-// 	send_request(&socket, req)?;
-// 	return Ok(());
-// }
-
-fn get_block(mut stream: &TcpStream) {
+fn add_block(mut stream: &TcpStream, name: String, tags: Vec<String>, proj: String) -> std::result::Result<(), &'static str> {
 	let req : Request = Request {
-		query: Query::GET(Specifier::Relative(0)),
+		query: Query::ADD(Entity::Block(pack(&name), pack(&proj))),
+	};
+	send_request(&stream, req)?;
+	for tag in tags.iter() {
+		let req : Request = Request {
+			query: Query::ADD(Entity::Tag(pack(&tag))),
+		};
+		send_request(&stream, req)?;
+	}
+	Ok(())
+}
+
+fn add_tag(mut stream: &TcpStream, name: String) -> std::result::Result<(), &'static str> {
+	let req : Request = Request {
+		query: Query::ADD(Entity::Tag(pack(&name))),
+	};
+	send_request(&stream, req)?;
+	Ok(())
+}
+
+fn get_block(mut stream: &TcpStream, rel: usize) {
+	let req : Request = Request {
+		query: Query::GET(Specifier::Relative(rel)),
 	};
 	let mut response: [u8; 1024] = [0; 1024];
 	send_request(&stream, req).unwrap();
@@ -134,22 +134,22 @@ fn main() {
 	skin.bold.set_fg(Red);
 	let stream =  TcpStream::connect("localhost:34254").unwrap();
 	match opts.subcmd {
-		// QueryCmd::Add(query) => {
-		// 	match query.subcmd {
-		// 		EntityCmd::Block(b) => {
-		// 			add_block(&stream, b.name, b.tags.split(",")
-		// 					  .map(str::to_string).collect(), b.project);
-		// 			success(&skin, "started new block");
-		// 		},
-		// 		EntityCmd::Tag(t) => {
-		// 			match add_tag(&socket, t.name) {
-		// 				Ok(_) => success(&skin, "added tag to existing block"),
-		// 				Err(s) => fail(&skin, "add tag to existing block", s),
-		// 			}
-		// 		},
-		// 	}
-		// },
-		QueryCmd::Get(_) => get_block(&stream),
+		QueryCmd::Add(query) => {
+			match query.subcmd {
+				EntityCmd::Block(b) => {
+					add_block(&stream, b.name, b.tags.split(",")
+							  .map(str::to_string).collect(), b.project);
+					success(&skin, "started new block");
+				},
+				EntityCmd::Tag(t) => {
+					match add_tag(&stream, t.name) {
+						Ok(_) => success(&skin, "added tag to existing block"),
+						Err(s) => fail(&skin, "add tag to existing block", s),
+					}
+				},
+			}
+		},
+		QueryCmd::Get(g) => get_block(&stream, g.relative),
 		_ => (),
 	}
 }
