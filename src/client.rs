@@ -33,8 +33,8 @@ fn send_request(mut stream: &TcpStream, req: Request) -> std::result::Result<(),
 		let buf = std::mem::transmute::<Request, [u8; std::mem::size_of::<Request>()]>(req);
 		stream.write(&buf).unwrap();
 	}
-	let mut buf: [u8; 16] = [0; 16];
-	stream.set_read_timeout(Some(std::time::Duration::new(1,0)));
+	// let mut buf: [u8; 16] = [0; 16];
+	// stream.set_read_timeout(Some(std::time::Duration::new(1,0)));
 	// match stream.read(&mut buf) {
 	// 	Ok(_) => {
 	// 		if (buf[0] != 1) {
@@ -47,17 +47,11 @@ fn send_request(mut stream: &TcpStream, req: Request) -> std::result::Result<(),
 	Ok(())
 }
 
-fn add_block(mut stream: &TcpStream, name: String, tags: Vec<String>, proj: String) -> std::result::Result<(), &'static str> {
+fn add_block(mut stream: &TcpStream, name: String, proj: String) -> std::result::Result<(), &'static str> {
 	let req : Request = Request {
 		query: Query::ADD(Entity::Block(pack(&name), pack(&proj))),
 	};
 	send_request(&stream, req)?;
-	for tag in tags.iter() {
-		let req : Request = Request {
-			query: Query::ADD(Entity::Tag(pack(&tag))),
-		};
-		send_request(&stream, req)?;
-	}
 	Ok(())
 }
 
@@ -137,8 +131,11 @@ fn main() {
 		QueryCmd::Add(query) => {
 			match query.subcmd {
 				EntityCmd::Block(b) => {
-					add_block(&stream, b.name, b.tags.split(",")
-							  .map(str::to_string).collect(), b.project);
+					add_block(&stream, b.name, b.project);
+					for tag in b.tags.split(",").map(str::to_string) {
+						let stream = TcpStream::connect("localhost:34254").unwrap();
+						add_tag(&stream, tag);
+					}
 					success(&skin, "started new block");
 				},
 				EntityCmd::Tag(t) => {
