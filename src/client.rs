@@ -90,8 +90,8 @@ fn get_block(mut stream: &TcpStream, spec: Specifier) {
 	skin.italic.set_fg(Blue);
 	skin.inline_code.set_fg(Cyan);
 	skin.inline_code.set_bg(Black);
-	skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());}
-
+	skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());
+}
 
 #[derive(Clap)]
 #[clap(version = "1.0", author = "quantumish")]
@@ -160,7 +160,7 @@ fn main() {
 	let mut skin = MadSkin::default();
 	skin.italic.set_fg(Green);
 	skin.bold.set_fg(Red);
-	let stream =  TcpStream::connect("localhost:34254").unwrap();
+	let mut stream =  TcpStream::connect("localhost:34254").unwrap();
 	match opts.subcmd {
 		QueryCmd::Add(query) => {
 			match query.subcmd {
@@ -188,6 +188,20 @@ fn main() {
 			} else {
 				get_block(&stream, Specifier::Relative(0))
 			}
+		},
+		QueryCmd::Log(r) => {
+			let req : Request = Request {
+				query: Query::LOG(Range::Term(Term::All)),
+			};
+			send_request(&stream, req).unwrap();
+			let mut response: [u8; 1024] = [0; 1024];
+			stream.read(&mut response).unwrap();
+			let mut skin = MadSkin::default();
+			skin.bold.set_fg(Blue);
+			skin.italic.set_fg(Blue);
+			skin.inline_code.set_fg(Cyan);
+			skin.inline_code.set_bg(Black);
+			skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());			
 		}
 		_ => (),
 	}

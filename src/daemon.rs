@@ -69,10 +69,14 @@ impl Block {
 		self.tags.push(tag);
 	}
 
-	// fn to_oneline_string(&self) -> String {
-
-	// }
-
+	fn to_oneline_string(&self) -> String {
+		return format!("\\* [`{}`] {}-{} *{}*\n",
+					   &self.id,
+					   &self.start.time().to_string().split(".").collect::<Vec<&str>>()[0], // HACK
+					   &self.end.unwrap().time().to_string().split(".").collect::<Vec<&str>>()[0], // HACK
+					   &self.name);
+	}
+	
 	fn to_detailed_string(&self) -> String {
 		let mut msg: String = String::new();
 		msg += &format!("[`{}`] *{}*\n", &self.id, &self.name);
@@ -101,6 +105,7 @@ impl Block {
 		msg.push_str("\n");
 		msg
 	}
+
 }
 
 // fn confirm(socket: &UdpSocket, src: &SocketAddr) {
@@ -148,11 +153,24 @@ fn main() {
 						}
 						_ => (),
 					},
-					// Query::LOG(r) => match r {
-					//	Range::Relative {
-
-					//	}
-					// }
+					Query::LOG(r) => match r {
+						Range::Term(t) => match t {
+							Term::Today => todo!(),
+							Term::Yesterday => todo!(),
+							Term::Week => todo!(),
+							Term::Month => todo!(),
+							Term::Year => todo!(),
+							Term::All => {
+								let mut msg: String = String::new();
+								for i in cache[1..].iter().rev() {
+									msg+=&i.to_oneline_string();
+								}
+								stream.write(msg.as_bytes()).unwrap();
+							},
+						},
+						Range::TimeRange(_, _) => todo!(),
+						Range::RelativeRange(_, _) => todo!(),
+					},
 					_ => (),
 				}
 			},
