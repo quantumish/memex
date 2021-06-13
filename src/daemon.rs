@@ -111,50 +111,43 @@ impl Block {
 
 struct Handler {
 	cache: Vec<Block>,
-    current: Block,
-	listener: TcpListener,
-	stream: TcpStream,
+	current: Block,
 }
-	
-// fn confirm(socket: &UdpSocket, src: &SocketAddr) {
-//	socket.send_to(&[1; 1], src);
-// }
 
 impl Handler {
 	fn new() -> Handler {
 		Handler {
-			cache: Vec::new();
-			current: Block::new();
-			listener: TcpListener::bind("127.0.0.1:34254").unwrap();
-		}
-	}
-	
-	fn handle_add(e: Entity) {
-		match e {
-			Entity::Block(name, proj) => {
-				current.stop();
-				cache.push(current.clone());
-				current = Block::new();
-				current.name = unpack(name.to_vec());
-				current.project = Some(Project {name: unpack(proj.to_vec())});
-			},
-			Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag.to_vec())}),
-			Entity::Project(proj) => current.project = Some(Project {name: unpack(proj.to_vec())}),
+			cache: Vec::new(),
+			current: Block::new(),
 		}
 	}
 
-	fn handle_get(s: Specifier) {
+	fn handle_add(&mut self, mut stream: &TcpStream, e: Entity) {
+		match e {
+			Entity::Block(name, proj) => {
+				self.current.stop();
+				self.cache.push(self.current.clone());
+				self.current = Block::new();
+				self.current.name = unpack(name.to_vec());
+				self.current.project = Some(Project {name: unpack(proj.to_vec())});
+			},
+			Entity::Tag(tag) => self.current.tags.push(Tag {name: unpack(tag.to_vec())}),
+			Entity::Project(proj) => self.current.project = Some(Project {name: unpack(proj.to_vec())}),
+		}
+	}
+
+	fn handle_get(&self, mut stream: &TcpStream, s: Specifier) {
 		match s {
 			Specifier::Relative(rel) => {
 				if (rel == 0) {
-					stream.write(current.to_detailed_string().as_bytes()).unwrap();
+					stream.write(self.current.to_detailed_string().as_bytes()).unwrap();
 				} else {
-					stream.write(cache[cache.len() - rel].to_detailed_string().as_bytes()).unwrap();
+					stream.write(self.cache[self.cache.len() - rel].to_detailed_string().as_bytes()).unwrap();
 				}
 			},
 			Specifier::Id(id) => {
 				let ident = unpack(id.to_vec());
-				for block in cache.iter() {
+				for block in self.cache.iter() {
 					if block.id.eq(&ident) {
 						stream.write(block.to_detailed_string().as_bytes()).unwrap();
 					}
@@ -164,7 +157,7 @@ impl Handler {
 		}
 	}
 
-	fn handle_log(r: Range, f: Fmt) {
+	fn handle_log(&self, mut stream: &TcpStream, r: Range, f: Fmt) {
 		match r {
 			Range::Term(t) => match t {
 				Term::Today => todo!(),
@@ -173,24 +166,15 @@ impl Handler {
 				Term::Month => todo!(),
 				Term::Year => todo!(),
 				Term::All => {
-					let mut s: DateTime<Local> = Local::now();
-					cache[0] =
-						Block {
-							name: String::from("Yesterday time"),
-							id: String::from("deadbeef"),
-							tags: Vec::new(),
-							project: None,
-							start: Local::now(),
-							end: Some(Local::now()),
-						};
-					cache[0].start = cache[0].start - Duration::days(2) + Duration::hours(1);
-					cache[0].end = Some(cache[0].end.unwrap() - Duration::days(2) + Duration::hours(2));
 					let mut msg: String = String::new();
-					let mut date: DateTime<Local> = cache[cache.len()-1].start + Duration::days(1);
-					for i in cache[..].iter().rev() {									
+					let mut date: DateTime<Local> = self.cache[self.cache.len()-1].start + Duration::days(1);
+					for i in self.cache[1..].iter().rev() {
 						if (i.start.signed_duration_since(date).num_hours() <= -24) {
 							date = i.start;
-							msg+=&format!("\n{}\n", i.start.date().format("%B %d, %Y"));
+							if i.id.ne(&self.cache[self.cache.len()-1].id) {
+								msg.push_str("\n");
+							}
+							msg+=&format!("{}\n", i.start.date().format("%B %d, %Y"));
 						}
 						msg+=&i.to_oneline_string();
 					}
@@ -199,24 +183,24 @@ impl Handler {
 			},
 			Range::TimeRange(_, _) => todo!(),
 			Range::RelativeRange(beg, end) => todo!(),
-		},
+		}
 	}
 }
 
 fn main() {
 	let mut handler = Handler::new();
-	for stream in listener.incoming() {		
+	let mut listener = TcpListener::bind("127.0.0.1:34254").unwrap();
+	for stream in listener.incoming() {
 		match stream {
 			Ok(mut stream) => {
-				handler.stream = stream;
 				let mut buf = [0; std::mem::size_of::<Request>()];
 				let req: Request;
 				stream.read(&mut buf).unwrap();
 				unsafe {req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);}
 				match req.query {
-					Query::ADD(e) => handler.handle_add();
-					Query::GET(s) => handler.handle_get();
-					Query::LOG(r,f) => handler.handle_log();
+					Query::ADD(e) => handler.handle_add(&stream, e),
+					Query::GET(s) => handler.handle_get(&stream, s),
+					Query::LOG(r,f) => handler.handle_log(&stream, r, f),
 					_ => (),
 				}
 			},
