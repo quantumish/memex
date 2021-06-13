@@ -4,7 +4,8 @@ pub use crate::requests::*;
 use std::thread;
 use std::time;
 use chrono::{Duration, DateTime, Local};
-use std::net::{UdpSocket, SocketAddr};
+use std::net::{TcpListener, TcpStream, Shutdown};
+use std::io::{Read, Write};
 
 fn unpack(s: [u8; MAX_NAME]) -> String {
 	match std::str::from_utf8(&s) {
@@ -87,49 +88,50 @@ impl Block {
 	}
 }
 
-fn confirm(socket: &UdpSocket, src: &SocketAddr) {
-	socket.send_to(&[1; 1], src);
-}
+// fn confirm(socket: &UdpSocket, src: &SocketAddr) {
+// 	socket.send_to(&[1; 1], src);
+// }
 
-fn main() -> std::io::Result<()> {
+fn main() {
 	let mut cache: Vec<Block> = Vec::new();
 	let mut current: Block = Block::new();
-	let mut socket = UdpSocket::bind("127.0.0.1:34254")?;
-	loop {
-		let mut buf = [0; std::mem::size_of::<Request>()];
-		let (amt, src) = socket.recv_from(&mut buf)?;
-		let req: Request;
-		// Time to commit a gamer moment.
-		unsafe {
-			req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);
+	let listener = TcpListener::bind("127.0.0.1:34254").unwrap();
+	for stream in listener.incoming() {
+		match stream {
+			Ok(mut stream) => {
+				let mut buf = [0; std::mem::size_of::<Request>()];
+				let req: Request;	
+				stream.read(&mut buf).unwrap();
+				unsafe {req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);}
+				match req.query {
+					Query::ADD(e) => match e {
+						Entity::Block(name, proj) => {
+							current.stop();
+							cache.push(current.clone());
+							current = Block::new();
+							current.name = unpack(name);
+							current.project = Some(Project {name: unpack(proj)});
+						},
+						Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag)}),
+						Entity::Project(proj) => current.project = Some(Project {name: unpack(proj)}),
+					},
+					Query::GET(s) => match s {
+						Specifier::Relative(rel) => {
+							if (rel == 0) {
+								stream.write(current.to_string().as_bytes()).unwrap();
+							} else {
+								stream.write(cache[cache.len() - rel].to_string().as_bytes()).unwrap();
+							}
+						},
+						_ => (),
+					},
+					_ => (),
+				}
+            },
+            Err(e) => {
+                println!("Error: {}", e);
+            },
 		}
-		// TODO: TCP is needed.
-		std::thread::sleep(std::time::Duration::from_millis(500));
-		match req.query {
-			Query::ADD(e) => match e {
-				Entity::Block(name, proj) => {
-					current.stop();
-					cache.push(current.clone());
-					current = Block::new();
-					current.name = unpack(name);
-					current.project = Some(Project {name: unpack(proj)});
-				},
-				Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag)}),
-				Entity::Project(proj) => current.project = Some(Project {name: unpack(proj)}),
-			},
-			Query::GET(s) => match s {
-				Specifier::Relative(rel) => {
-					if (rel == 0) {
-						print!("{}", current.to_string());
-						socket.send_to(current.to_string().as_bytes(), src);
-					} else {
-						socket.send_to(cache[cache.len() - rel].to_string().as_bytes(), src);
-					}
-				},
-				_ => (),
-			},
-			_ => (),
-		}
-		confirm(&socket, &src); // TODO: actual error handling
 	}
+	drop(listener);
 }

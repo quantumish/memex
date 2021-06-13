@@ -1,11 +1,11 @@
-use std::net::UdpSocket;
 pub mod requests;
 pub use crate::requests::*;
 use std::thread;
 use clap::{AppSettings, Clap};
 use crossterm::style::{Attribute::*, Color::*};
 use termimad::*;
-use std::result;
+use std::net::{TcpListener, TcpStream, Shutdown};
+use std::io::{Read, Write};
 
 fn pack(s: &String) -> [u8; MAX_NAME] {
 	let chars: Vec<char> = s.chars().collect();
@@ -28,61 +28,55 @@ fn success(skin: &termimad::MadSkin, activity: &str) {
 	std::process::exit(0);
 }
 
-fn send_request(socket: &UdpSocket, req: Request) -> result::Result<(), &'static str> {
+fn send_request(mut stream: &TcpStream, req: Request) -> std::result::Result<(), &'static str> {
 	unsafe {
 		let buf = std::mem::transmute::<Request, [u8; std::mem::size_of::<Request>()]>(req);
-		socket.send_to(&buf, "127.0.0.1:34254");
+		stream.write(&buf).unwrap();
 	}
 	let mut buf: [u8; 16] = [0; 16];
-	socket.set_read_timeout(Some(std::time::Duration::new(1,0)));
-	match socket.recv_from(&mut buf) {
-		Ok(_) => {
-			if (buf[0] != 1) {
-				return Err("failed to recieve response from daemon");
-			}
-			Ok(())
-		},
-		Err(x) => Err("failed to read from socket"),
-	}
+	stream.set_read_timeout(Some(std::time::Duration::new(1,0)));
+	// match stream.read(&mut buf) {
+	// 	Ok(_) => {
+	// 		if (buf[0] != 1) {
+	// 			return Err("failed to recieve response from daemon");
+	// 		}
+	// 		Ok(())
+	// 	},
+	// 	Err(x) => Err("failed to read from socket"),
+	// }
+	Ok(())
 }
 
-fn add_block(socket: &UdpSocket, name: String, tags: Vec<String>, proj: String) -> result::Result<(), &'static str> {
-	let req : Request = Request {
-		query: Query::ADD(Entity::Block(pack(&name), pack(&proj))),
-	};
-	send_request(&socket, req)?;
-	for tag in tags.iter() {
-		let req : Request = Request {
-			query: Query::ADD(Entity::Tag(pack(&tag))),
-		};
-		send_request(&socket, req)?;
-	}
-	return Ok(());
-}
+// fn add_block(socket: &UdpSocket, name: String, tags: Vec<String>, proj: String) -> result::Result<(), &'static str> {
+// 	let req : Request = Request {
+// 		query: Query::ADD(Entity::Block(pack(&name), pack(&proj))),
+// 	};
+// 	send_request(&socket, req)?;
+// 	for tag in tags.iter() {
+// 		let req : Request = Request {
+// 			query: Query::ADD(Entity::Tag(pack(&tag))),
+// 		};
+// 		send_request(&socket, req)?;
+// 	}
+// 	return Ok(());
+// }
 
-fn add_tag(socket: &UdpSocket, name: String) -> result::Result<(), &'static str> {
-	let req : Request = Request {
-		query: Query::ADD(Entity::Tag(pack(&name))),
-	};
-	send_request(&socket, req)?;
-	return Ok(());
-}
+// fn add_tag(socket: &UdpSocket, name: String) -> result::Result<(), &'static str> {
+// 	let req : Request = Request {
+// 		query: Query::ADD(Entity::Tag(pack(&name))),
+// 	};
+// 	send_request(&socket, req)?;
+// 	return Ok(());
+// }
 
-fn get_block(socket: &UdpSocket) {
+fn get_block(mut stream: &TcpStream) {
 	let req : Request = Request {
 		query: Query::GET(Specifier::Relative(0)),
 	};
 	let mut response: [u8; 1024] = [0; 1024];
-	let result: (usize, std::net::SocketAddr);
-	send_request(&socket, req);
-	match socket.recv_from(&mut response) {
-		Ok(x) => result = x,
-		Err(_) => panic!("AAAAAA"),
-	}
-	match String::from_utf8(response[..result.0].to_vec()) {
-		Ok(x) => print!("aa {}", x),
-		Err(_) => panic!("AAhvgdsajssbvc"),
-	}
+	send_request(&stream, req).unwrap();
+	stream.read(&mut response).unwrap();
+	print!("{}", String::from_utf8(response.to_vec()).unwrap());
 }
 
 #[derive(Clap)]
@@ -138,28 +132,24 @@ fn main() {
 	let mut skin = MadSkin::default();
 	skin.italic.set_fg(Green);
 	skin.bold.set_fg(Red);
-	let socket;
-	match UdpSocket::bind("127.0.0.1:34256") {
-		Ok(x) => socket = x,
-		Err(_) => panic!("AA"),
-	}
+	let stream =  TcpStream::connect("localhost:34254").unwrap();
 	match opts.subcmd {
-		QueryCmd::Add(query) => {
-			match query.subcmd {
-				EntityCmd::Block(b) => {
-					add_block(&socket, b.name, b.tags.split(",")
-							  .map(str::to_string).collect(), b.project);
-					success(&skin, "started new block");
-				},
-				EntityCmd::Tag(t) => {
-					match add_tag(&socket, t.name) {
-						Ok(_) => success(&skin, "added tag to existing block"),
-						Err(s) => fail(&skin, "add tag to existing block", s),
-					}
-				},
-			}
-		},
-		QueryCmd::Get(_) => get_block(&socket),
+		// QueryCmd::Add(query) => {
+		// 	match query.subcmd {
+		// 		EntityCmd::Block(b) => {
+		// 			add_block(&stream, b.name, b.tags.split(",")
+		// 					  .map(str::to_string).collect(), b.project);
+		// 			success(&skin, "started new block");
+		// 		},
+		// 		EntityCmd::Tag(t) => {
+		// 			match add_tag(&socket, t.name) {
+		// 				Ok(_) => success(&skin, "added tag to existing block"),
+		// 				Err(s) => fail(&skin, "add tag to existing block", s),
+		// 			}
+		// 		},
+		// 	}
+		// },
+		QueryCmd::Get(_) => get_block(&stream),
+		_ => (),
 	}
-
 }
