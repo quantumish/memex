@@ -191,7 +191,7 @@ fn main() {
 		},
 		QueryCmd::Log(r) => {
 			let req : Request = Request {
-				query: Query::LOG(Range::Term(Term::All)),
+				query: Query::LOG(Range::Term(Term::All), Fmt::Oneline),
 			};
 			send_request(&stream, req).unwrap();
 			let mut response: [u8; 1024] = [0; 1024];

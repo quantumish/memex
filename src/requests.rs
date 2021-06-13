@@ -5,8 +5,14 @@ pub const MAX_ATTR_NAME: usize = 16;
 pub enum Query {
 	GET(Specifier),
 	ADD(Entity),
-	LOG(Range)
+	LOG(Range, Fmt),
 	// DEL,
+}
+
+pub enum Fmt {
+	Oneline,
+	Terse,
+	Detail,
 }
 
 pub enum Range {

@@ -3,7 +3,7 @@ pub use crate::requests::*;
 
 use std::thread;
 use std::time;
-use chrono::{Duration, DateTime, Local};
+use chrono::{Duration, DateTime, Local, Date, NaiveTime};
 use std::net::{TcpListener, TcpStream, Shutdown};
 use std::io::{Read, Write};
 use nanoid::nanoid;
@@ -76,7 +76,7 @@ impl Block {
 					   &self.end.unwrap().time().to_string().split(".").collect::<Vec<&str>>()[0], // HACK
 					   &self.name);
 	}
-	
+
 	fn to_detailed_string(&self) -> String {
 		let mut msg: String = String::new();
 		msg += &format!("[`{}`] *{}*\n", &self.id, &self.name);
@@ -111,6 +111,7 @@ impl Block {
 // fn confirm(socket: &UdpSocket, src: &SocketAddr) {
 //	socket.send_to(&[1; 1], src);
 // }
+
 
 fn main() {
 	let mut cache: Vec<Block> = Vec::new();
@@ -153,7 +154,7 @@ fn main() {
 						}
 						_ => (),
 					},
-					Query::LOG(r) => match r {
+					Query::LOG(r,f) => match r {
 						Range::Term(t) => match t {
 							Term::Today => todo!(),
 							Term::Yesterday => todo!(),
@@ -161,15 +162,32 @@ fn main() {
 							Term::Month => todo!(),
 							Term::Year => todo!(),
 							Term::All => {
+								let mut s: DateTime<Local> = Local::now();
+								cache[0] =
+									Block {
+										name: String::from("Yesterday time"),
+										id: String::from("deadbeef"),
+										tags: Vec::new(),
+										project: None,
+										start: Local::now(),
+										end: Some(Local::now()),
+									};
+								cache[0].start = cache[0].start - Duration::days(2) + Duration::hours(1);
+								cache[0].end = Some(cache[0].end.unwrap() - Duration::days(2) + Duration::hours(2));
 								let mut msg: String = String::new();
-								for i in cache[1..].iter().rev() {
+								let mut date: DateTime<Local> = cache[cache.len()-1].start + Duration::days(1);
+								for i in cache[..].iter().rev() {									
+									if (i.start.signed_duration_since(date).num_hours() <= -24) {
+										date = i.start;
+										msg+=&format!("\n{}\n", i.start.date().format("%B %d, %Y"));
+									}
 									msg+=&i.to_oneline_string();
 								}
 								stream.write(msg.as_bytes()).unwrap();
 							},
 						},
 						Range::TimeRange(_, _) => todo!(),
-						Range::RelativeRange(_, _) => todo!(),
+						Range::RelativeRange(beg, end) => todo!(),
 					},
 					_ => (),
 				}
