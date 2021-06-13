@@ -7,7 +7,21 @@ use termimad::*;
 use std::net::{TcpListener, TcpStream, Shutdown};
 use std::io::{Read, Write};
 
-fn pack(s: &String) -> [u8; MAX_NAME] {
+
+// HACK this is really dumb
+
+fn pack_attr(s: &String) -> [u8; MAX_ATTR_NAME] {
+	let chars: Vec<char> = s.chars().collect();
+	let length = chars.len();
+	if (length > MAX_ATTR_NAME) {panic!("String too big to pack!");}
+	let mut tmp: [u8; MAX_ATTR_NAME] = [0; MAX_ATTR_NAME];
+	for i in 0..length {
+		tmp[i] = chars[i] as u8;
+	}
+	tmp
+}
+
+fn pack_name(s: &String) -> [u8; MAX_NAME] {
 	let chars: Vec<char> = s.chars().collect();
 	let length = chars.len();
 	if (length > MAX_NAME) {panic!("String too big to pack!");}
@@ -17,6 +31,7 @@ fn pack(s: &String) -> [u8; MAX_NAME] {
 	}
 	tmp
 }
+
 
 fn fail(skin: &termimad::MadSkin, activity: &str, what: &str) {
 	skin.print_inline(&format!("** ✗ Failed to {} ({})!**\n", activity, what)[..]);
@@ -49,7 +64,7 @@ fn send_request(mut stream: &TcpStream, req: Request) -> std::result::Result<(),
 
 fn add_block(mut stream: &TcpStream, name: String, proj: String) -> std::result::Result<(), &'static str> {
 	let req : Request = Request {
-		query: Query::ADD(Entity::Block(pack(&name), pack(&proj))),
+		query: Query::ADD(Entity::Block(pack_name(&name), pack_attr(&proj))),
 	};
 	send_request(&stream, req)?;
 	Ok(())
@@ -57,15 +72,15 @@ fn add_block(mut stream: &TcpStream, name: String, proj: String) -> std::result:
 
 fn add_tag(mut stream: &TcpStream, name: String) -> std::result::Result<(), &'static str> {
 	let req : Request = Request {
-		query: Query::ADD(Entity::Tag(pack(&name))),
+		query: Query::ADD(Entity::Tag(pack_attr(&name))),
 	};
 	send_request(&stream, req)?;
 	Ok(())
 }
 
-fn get_block(mut stream: &TcpStream, rel: usize) {
+fn get_block(mut stream: &TcpStream, spec: Specifier) {
 	let req : Request = Request {
-		query: Query::GET(Specifier::Relative(rel)),
+		query: Query::GET(spec),
 	};
 	let mut response: [u8; 1024] = [0; 1024];
 	send_request(&stream, req).unwrap();
@@ -90,9 +105,11 @@ struct Opts {
 enum QueryCmd {
 	Add(Add),
 	Get(Get),
+	Log(Log),
 }
 
 #[derive(Clap)]
+#[clap(setting = AppSettings::ColoredHelp)]
 struct Add {
 	#[clap(subcommand)]
 	subcmd: EntityCmd,
@@ -105,6 +122,7 @@ enum EntityCmd {
 }
 
 #[derive(Clap)]
+#[clap(setting = AppSettings::ColoredHelp)]
 struct Block {
 	#[clap(short)]
 	name: String,
@@ -115,15 +133,26 @@ struct Block {
 }
 
 #[derive(Clap)]
+#[clap(setting = AppSettings::ColoredHelp)]
 struct Tag {
 	#[clap(short)]
 	name: String,
 }
 
 #[derive(Clap)]
+#[clap(setting = AppSettings::ColoredHelp)]
 struct Get {
-	#[clap(short, default_value = "0")]
-	relative: usize,
+	#[clap(long)]
+	rel: Option<usize>,
+	#[clap(long)]
+	id: Option<String>,	
+}
+
+#[derive(Clap)]
+#[clap(setting = AppSettings::ColoredHelp)]
+struct Log {
+	#[clap(long)]
+	compact: bool,
 }
 
 fn main() {
@@ -151,7 +180,15 @@ fn main() {
 				},
 			}
 		},
-		QueryCmd::Get(g) => get_block(&stream, g.relative),
+		QueryCmd::Get(g) => {			
+			if (g.rel.is_some()) {
+				get_block(&stream, Specifier::Relative(g.rel.unwrap()))
+			} else if (g.id.is_some()) {
+				get_block(&stream, Specifier::Id(pack_attr(&g.id.unwrap())))
+			} else {
+				get_block(&stream, Specifier::Relative(0))
+			}
+		}
 		_ => (),
 	}
 }

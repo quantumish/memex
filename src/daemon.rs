@@ -8,7 +8,7 @@ use std::net::{TcpListener, TcpStream, Shutdown};
 use std::io::{Read, Write};
 use nanoid::nanoid;
 
-fn unpack(s: [u8; MAX_NAME]) -> String {
+fn unpack(s: Vec<u8>) -> String {
 	match std::str::from_utf8(&s) {
 		Ok(x) => String::from(x),
 		Err(_x) => panic!("Failed to unpack."),
@@ -68,13 +68,23 @@ impl Block {
 		self.tags.push(tag);
 	}
 
-	fn to_string(&self) -> String {
+	// fn to_oneline_string(&self) -> String {
+		
+	// }
+	
+	fn to_detailed_string(&self) -> String {
 		let mut msg: String = String::new();
 		msg += &format!("[`{}`] *{}*\n", &self.id, &self.name);
 		msg += &format!("**Start**: {}\n", &self.start.to_rfc2822());		
 		msg.push_str("**Stop**: ");
 		match self.end {
-			Some(x) => msg += &x.to_rfc2822(),
+			Some(x) => {
+				msg += &x.to_rfc2822();
+				msg.push_str("\n**Duration**: ");
+				let dur = x.signed_duration_since(self.start);
+				// TODO handle days and weeks
+				msg += &format!("{:02}:{:02}:{:02}", dur.num_hours(), dur.num_minutes(), dur.num_seconds());
+			}
 			None => msg.push_str("None"),
 		}
 		msg.push_str("\n**Tags**: ");
@@ -113,22 +123,34 @@ fn main() {
 							current.stop();
 							cache.push(current.clone());
 							current = Block::new();
-							current.name = unpack(name);
-							current.project = Some(Project {name: unpack(proj)});
+							current.name = unpack(name.to_vec());
+							current.project = Some(Project {name: unpack(proj.to_vec())});
 						},
-						Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag)}),
-						Entity::Project(proj) => current.project = Some(Project {name: unpack(proj)}),
+						Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag.to_vec())}),
+						Entity::Project(proj) => current.project = Some(Project {name: unpack(proj.to_vec())}),
 					},
 					Query::GET(s) => match s {
 						Specifier::Relative(rel) => {
 							if (rel == 0) {
-								stream.write(current.to_string().as_bytes()).unwrap();
+								stream.write(current.to_detailed_string().as_bytes()).unwrap();
 							} else {
-								stream.write(cache[cache.len() - rel].to_string().as_bytes()).unwrap();
+								stream.write(cache[cache.len() - rel].to_detailed_string().as_bytes()).unwrap();
 							}
 						},
+						Specifier::Id(id) => {
+							for block in cache.iter() {
+								if (block.id == unpack(id.to_vec())) {
+									stream.write(block.to_detailed_string().as_bytes()).unwrap();
+								}
+							}
+						}
 						_ => (),
 					},
+					// Query::LOG(r) => match r {
+					// 	Range::Relative {
+							
+					// 	}
+					// }
 					_ => (),
 				}
             },
