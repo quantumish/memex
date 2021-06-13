@@ -108,87 +108,115 @@ impl Block {
 
 }
 
+
+struct Handler {
+	cache: Vec<Block>,
+    current: Block,
+	listener: TcpListener,
+	stream: TcpStream,
+}
+	
 // fn confirm(socket: &UdpSocket, src: &SocketAddr) {
 //	socket.send_to(&[1; 1], src);
 // }
 
+impl Handler {
+	fn new() -> Handler {
+		Handler {
+			cache: Vec::new();
+			current: Block::new();
+			listener: TcpListener::bind("127.0.0.1:34254").unwrap();
+		}
+	}
+	
+	fn handle_add(e: Entity) {
+		match e {
+			Entity::Block(name, proj) => {
+				current.stop();
+				cache.push(current.clone());
+				current = Block::new();
+				current.name = unpack(name.to_vec());
+				current.project = Some(Project {name: unpack(proj.to_vec())});
+			},
+			Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag.to_vec())}),
+			Entity::Project(proj) => current.project = Some(Project {name: unpack(proj.to_vec())}),
+		}
+	}
+
+	fn handle_get(s: Specifier) {
+		match s {
+			Specifier::Relative(rel) => {
+				if (rel == 0) {
+					stream.write(current.to_detailed_string().as_bytes()).unwrap();
+				} else {
+					stream.write(cache[cache.len() - rel].to_detailed_string().as_bytes()).unwrap();
+				}
+			},
+			Specifier::Id(id) => {
+				let ident = unpack(id.to_vec());
+				for block in cache.iter() {
+					if block.id.eq(&ident) {
+						stream.write(block.to_detailed_string().as_bytes()).unwrap();
+					}
+				}
+			}
+			_ => (),
+		}
+	}
+
+	fn handle_log(r: Range, f: Fmt) {
+		match r {
+			Range::Term(t) => match t {
+				Term::Today => todo!(),
+				Term::Yesterday => todo!(),
+				Term::Week => todo!(),
+				Term::Month => todo!(),
+				Term::Year => todo!(),
+				Term::All => {
+					let mut s: DateTime<Local> = Local::now();
+					cache[0] =
+						Block {
+							name: String::from("Yesterday time"),
+							id: String::from("deadbeef"),
+							tags: Vec::new(),
+							project: None,
+							start: Local::now(),
+							end: Some(Local::now()),
+						};
+					cache[0].start = cache[0].start - Duration::days(2) + Duration::hours(1);
+					cache[0].end = Some(cache[0].end.unwrap() - Duration::days(2) + Duration::hours(2));
+					let mut msg: String = String::new();
+					let mut date: DateTime<Local> = cache[cache.len()-1].start + Duration::days(1);
+					for i in cache[..].iter().rev() {									
+						if (i.start.signed_duration_since(date).num_hours() <= -24) {
+							date = i.start;
+							msg+=&format!("\n{}\n", i.start.date().format("%B %d, %Y"));
+						}
+						msg+=&i.to_oneline_string();
+					}
+					stream.write(msg.as_bytes()).unwrap();
+				},
+			},
+			Range::TimeRange(_, _) => todo!(),
+			Range::RelativeRange(beg, end) => todo!(),
+		},
+	}
+}
 
 fn main() {
-	let mut cache: Vec<Block> = Vec::new();
-	let mut current: Block = Block::new();
-	let listener = TcpListener::bind("127.0.0.1:34254").unwrap();
-	for stream in listener.incoming() {
+	let mut handler = Handler::new();
+	for stream in listener.incoming() {		
 		match stream {
 			Ok(mut stream) => {
+				handler.stream = stream;
 				let mut buf = [0; std::mem::size_of::<Request>()];
 				let req: Request;
 				stream.read(&mut buf).unwrap();
 				unsafe {req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);}
 				match req.query {
-					Query::ADD(e) => match e {
-						Entity::Block(name, proj) => {
-							current.stop();
-							cache.push(current.clone());
-							current = Block::new();
-							current.name = unpack(name.to_vec());
-							current.project = Some(Project {name: unpack(proj.to_vec())});
-						},
-						Entity::Tag(tag) => current.tags.push(Tag {name: unpack(tag.to_vec())}),
-						Entity::Project(proj) => current.project = Some(Project {name: unpack(proj.to_vec())}),
-					},
-					Query::GET(s) => match s {
-						Specifier::Relative(rel) => {
-							if (rel == 0) {
-								stream.write(current.to_detailed_string().as_bytes()).unwrap();
-							} else {
-								stream.write(cache[cache.len() - rel].to_detailed_string().as_bytes()).unwrap();
-							}
-						},
-						Specifier::Id(id) => {
-							let ident = unpack(id.to_vec());
-							for block in cache.iter() {
-								if block.id.eq(&ident) {
-									stream.write(block.to_detailed_string().as_bytes()).unwrap();
-								}
-							}
-						}
-						_ => (),
-					},
-					Query::LOG(r,f) => match r {
-						Range::Term(t) => match t {
-							Term::Today => todo!(),
-							Term::Yesterday => todo!(),
-							Term::Week => todo!(),
-							Term::Month => todo!(),
-							Term::Year => todo!(),
-							Term::All => {
-								let mut s: DateTime<Local> = Local::now();
-								cache[0] =
-									Block {
-										name: String::from("Yesterday time"),
-										id: String::from("deadbeef"),
-										tags: Vec::new(),
-										project: None,
-										start: Local::now(),
-										end: Some(Local::now()),
-									};
-								cache[0].start = cache[0].start - Duration::days(2) + Duration::hours(1);
-								cache[0].end = Some(cache[0].end.unwrap() - Duration::days(2) + Duration::hours(2));
-								let mut msg: String = String::new();
-								let mut date: DateTime<Local> = cache[cache.len()-1].start + Duration::days(1);
-								for i in cache[..].iter().rev() {									
-									if (i.start.signed_duration_since(date).num_hours() <= -24) {
-										date = i.start;
-										msg+=&format!("\n{}\n", i.start.date().format("%B %d, %Y"));
-									}
-									msg+=&i.to_oneline_string();
-								}
-								stream.write(msg.as_bytes()).unwrap();
-							},
-						},
-						Range::TimeRange(_, _) => todo!(),
-						Range::RelativeRange(beg, end) => todo!(),
-					},
+					Query::ADD(e) => handler.handle_add();
+					Query::GET(s) => handler.handle_get();
+					Query::LOG(r,f) => handler.handle_log();
 					_ => (),
 				}
 			},
