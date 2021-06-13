@@ -70,8 +70,13 @@ fn get_block(mut stream: &TcpStream, rel: usize) {
 	let mut response: [u8; 1024] = [0; 1024];
 	send_request(&stream, req).unwrap();
 	stream.read(&mut response).unwrap();
-	print!("{}", String::from_utf8(response.to_vec()).unwrap());
-}
+	let mut skin = MadSkin::default();
+	skin.bold.set_fg(Blue);
+	skin.italic.set_fg(Blue);
+	skin.inline_code.set_fg(Cyan);
+	skin.inline_code.set_bg(Black);
+	skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());}
+
 
 #[derive(Clap)]
 #[clap(version = "1.0", author = "quantumish")]

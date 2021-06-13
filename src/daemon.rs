@@ -6,6 +6,7 @@ use std::time;
 use chrono::{Duration, DateTime, Local};
 use std::net::{TcpListener, TcpStream, Shutdown};
 use std::io::{Read, Write};
+use nanoid::nanoid;
 
 fn unpack(s: [u8; MAX_NAME]) -> String {
 	match std::str::from_utf8(&s) {
@@ -31,16 +32,21 @@ pub struct Block {
 	end: Option<DateTime<Local>>,
 	tags: Vec<Tag>,
 	project: Option<Project>,
+	id: String,
 }
 
 impl Block {
 	fn new() -> Block {
+		let alphabet: [char; 16] = [
+			'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f'
+		];
 		Block {
 			name: String::new(),
 			start: Local::now(),
 			end: None,
 			tags: Vec::new(),
 			project: None,
+			id: nanoid!(8, &alphabet),
 		}
 	}
 
@@ -64,21 +70,19 @@ impl Block {
 
 	fn to_string(&self) -> String {
 		let mut msg: String = String::new();
-		msg.push_str("Name: ");
-		msg += &self.name;
-		msg.push_str("\nStart: ");
-		msg += &self.start.to_rfc2822();
-		msg.push_str("\nStop: ");
+		msg += &format!("[`{}`] *{}*\n", &self.id, &self.name);
+		msg += &format!("**Start**: {}\n", &self.start.to_rfc2822());		
+		msg.push_str("**Stop**: ");
 		match self.end {
 			Some(x) => msg += &x.to_rfc2822(),
 			None => msg.push_str("None"),
 		}
-		msg.push_str("\nTags: ");
+		msg.push_str("\n**Tags**: ");
 		for i in self.tags.iter() {
 			msg += &i.name;
 			msg.push_str(" ");
 		}
-		msg.push_str("\nProject: ");
+		msg.push_str("\n**Project**: ");
 		match self.project.clone() {
 			Some(x) => msg += &x.name,
 			None => msg.push_str("None"),
