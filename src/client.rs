@@ -51,13 +51,13 @@ fn send_request(mut stream: &TcpStream, req: Request) -> std::result::Result<(),
 	// let mut buf: [u8; 16] = [0; 16];
 	// stream.set_read_timeout(Some(std::time::Duration::new(1,0)));
 	// match stream.read(&mut buf) {
-	// 	Ok(_) => {
-	// 		if (buf[0] != 1) {
-	// 			return Err("failed to recieve response from daemon");
-	// 		}
-	// 		Ok(())
-	// 	},
-	// 	Err(x) => Err("failed to read from socket"),
+	//	Ok(_) => {
+	//		if (buf[0] != 1) {
+	//			return Err("failed to recieve response from daemon");
+	//		}
+	//		Ok(())
+	//	},
+	//	Err(x) => Err("failed to read from socket"),
 	// }
 	Ok(())
 }
@@ -145,7 +145,7 @@ struct Get {
 	#[clap(long)]
 	rel: Option<usize>,
 	#[clap(long)]
-	id: Option<String>,	
+	id: Option<String>,
 }
 
 #[derive(Clap)]
@@ -180,7 +180,7 @@ fn main() {
 				},
 			}
 		},
-		QueryCmd::Get(g) => {			
+		QueryCmd::Get(g) => {
 			if (g.rel.is_some()) {
 				get_block(&stream, Specifier::Relative(g.rel.unwrap()))
 			} else if (g.id.is_some()) {

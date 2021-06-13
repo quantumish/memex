@@ -8,7 +8,8 @@ use std::net::{TcpListener, TcpStream, Shutdown};
 use std::io::{Read, Write};
 use nanoid::nanoid;
 
-fn unpack(s: Vec<u8>) -> String {
+fn unpack(mut s: Vec<u8>) -> String {
+	s.retain(|&x| x != 0);
 	match std::str::from_utf8(&s) {
 		Ok(x) => String::from(x),
 		Err(_x) => panic!("Failed to unpack."),
@@ -69,13 +70,13 @@ impl Block {
 	}
 
 	// fn to_oneline_string(&self) -> String {
-		
+
 	// }
-	
+
 	fn to_detailed_string(&self) -> String {
 		let mut msg: String = String::new();
 		msg += &format!("[`{}`] *{}*\n", &self.id, &self.name);
-		msg += &format!("**Start**: {}\n", &self.start.to_rfc2822());		
+		msg += &format!("**Start**: {}\n", &self.start.to_rfc2822());
 		msg.push_str("**Stop**: ");
 		match self.end {
 			Some(x) => {
@@ -103,7 +104,7 @@ impl Block {
 }
 
 // fn confirm(socket: &UdpSocket, src: &SocketAddr) {
-// 	socket.send_to(&[1; 1], src);
+//	socket.send_to(&[1; 1], src);
 // }
 
 fn main() {
@@ -114,7 +115,7 @@ fn main() {
 		match stream {
 			Ok(mut stream) => {
 				let mut buf = [0; std::mem::size_of::<Request>()];
-				let req: Request;	
+				let req: Request;
 				stream.read(&mut buf).unwrap();
 				unsafe {req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);}
 				match req.query {
@@ -138,8 +139,9 @@ fn main() {
 							}
 						},
 						Specifier::Id(id) => {
+							let ident = unpack(id.to_vec());
 							for block in cache.iter() {
-								if (block.id == unpack(id.to_vec())) {
+								if block.id.eq(&ident) {
 									stream.write(block.to_detailed_string().as_bytes()).unwrap();
 								}
 							}
@@ -147,16 +149,16 @@ fn main() {
 						_ => (),
 					},
 					// Query::LOG(r) => match r {
-					// 	Range::Relative {
-							
-					// 	}
+					//	Range::Relative {
+
+					//	}
 					// }
 					_ => (),
 				}
-            },
-            Err(e) => {
-                println!("Error: {}", e);
-            },
+			},
+			Err(e) => {
+				println!("Error: {}", e);
+			},
 		}
 	}
 	drop(listener);
