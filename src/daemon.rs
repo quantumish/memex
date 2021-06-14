@@ -155,10 +155,10 @@ impl Handler {
 						write_stream(stream, i.to_detailed_string());
 					} else {write_stream(stream, String::from("ERR: no existing block"));}
 				} else {
-					if rel >= self.cache.len() {
+					if rel > self.cache.len() {
 						write_stream(stream, String::from("ERR: out of range"));
 					} else {
-						write_stream(stream, self.cache[self.cache.len() - rel].to_detailed_string());
+						write_stream(stream, self.cache[self.cache.len()-rel-1].to_detailed_string());
 					}
 				}
 			},
@@ -169,6 +169,7 @@ impl Handler {
 						write_stream(stream, block.to_detailed_string());
 					}
 				}
+				write_stream(stream, String::from("ERR: invalid ID"));
 			}
 		}
 	}

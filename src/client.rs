@@ -1,35 +1,34 @@
 pub mod requests;
 pub use crate::requests::*;
-use std::thread;
 use clap::{AppSettings, Clap};
-use crossterm::style::{Attribute::*, Color::*};
+use crossterm::style::Color::*;
 use termimad::*;
-use std::net::{TcpListener, TcpStream, Shutdown};
+use std::net::TcpStream;
 use std::io::{Read, Write};
 
 
 // HACK this is really dumb
 
-fn pack_attr(s: &String) -> [u8; MAX_ATTR_NAME] {
+fn pack_attr(s: &String) -> std::result::Result<[u8; MAX_ATTR_NAME], &'static str> {
 	let chars: Vec<char> = s.chars().collect();
 	let length = chars.len();
-	if (length > MAX_ATTR_NAME) {panic!("String too big to pack!");}
+	if length > MAX_ATTR_NAME {return Err("String too big to pack!");}
 	let mut tmp: [u8; MAX_ATTR_NAME] = [0; MAX_ATTR_NAME];
 	for i in 0..length {
 		tmp[i] = chars[i] as u8;
 	}
-	tmp
+	Ok(tmp)
 }
 
-fn pack_name(s: &String) -> [u8; MAX_NAME] {
+fn pack_name(s: &String) -> std::result::Result<[u8; MAX_NAME], &'static str> {
 	let chars: Vec<char> = s.chars().collect();
 	let length = chars.len();
-	if (length > MAX_NAME) {panic!("String too big to pack!");}
+	if length > MAX_NAME {return Err("String too big to pack!");}
 	let mut tmp: [u8; MAX_NAME] = [0; MAX_NAME];
 	for i in 0..length {
 		tmp[i] = chars[i] as u8;
 	}
-	tmp
+	Ok(tmp)
 }
 
 
@@ -51,46 +50,51 @@ fn send_request(mut stream: &TcpStream, req: Request) -> std::result::Result<(),
 	// let mut buf: [u8; 16] = [0; 16];
 	// stream.set_read_timeout(Some(std::time::Duration::new(1,0)));
 	// match stream.read(&mut buf) {
-	//	Ok(_) => {
-	//		if (buf[0] != 1) {
-	//			return Err("failed to recieve response from daemon");
-	//		}
-	//		Ok(())
-	//	},
-	//	Err(x) => Err("failed to read from socket"),
+	// 	Ok(_) => {
+	// 		if (buf[0] != 1) {
+	// 			return Err("failed to recieve response from daemon");
+	// 		}
+	// 		Ok(())
+	// 	},
+	// 	Err(x) => Err("failed to read from socket"),
 	// }
 	Ok(())
 }
 
-fn add_block(mut stream: &TcpStream, name: String, proj: String) -> std::result::Result<(), &'static str> {
+fn add_block(stream: &TcpStream, name: String, proj: String) -> std::result::Result<(), &'static str> {
 	let req : Request = Request {
-		query: Query::ADD(Entity::Block(pack_name(&name), pack_attr(&proj))),
+		query: Query::ADD(Entity::Block(pack_name(&name).unwrap(), pack_attr(&proj).unwrap())),
 	};
 	send_request(&stream, req)?;
 	Ok(())
 }
 
-fn add_tag(mut stream: &TcpStream, name: String) -> std::result::Result<(), &'static str> {
+fn add_tag(stream: &TcpStream, name: String) -> std::result::Result<(), &'static str> {
 	let req : Request = Request {
-		query: Query::ADD(Entity::Tag(pack_attr(&name))),
+		query: Query::ADD(Entity::Tag(pack_attr(&name).unwrap())),
 	};
 	send_request(&stream, req)?;
 	Ok(())
 }
 
-fn get_block(mut stream: &TcpStream, spec: Specifier) {
+fn get_block(mut stream: &TcpStream, spec: Specifier) -> std::result::Result<(), String> {
 	let req : Request = Request {
 		query: Query::GET(spec),
 	};
 	let mut response: [u8; 1024] = [0; 1024];
-	send_request(&stream, req).unwrap();
-	stream.read(&mut response).unwrap();
+	if let Err(s) = send_request(&stream, req) {return Err(s.to_string());}
+	if let Err(s) = stream.read(&mut response) {return Err(s.to_string());}
+	let stringified = String::from_utf8(response.to_vec()).unwrap();
+	if stringified[..3].eq("ERR") {
+		return Err(stringified[5..].to_string());
+	}
 	let mut skin = MadSkin::default();
 	skin.bold.set_fg(Blue);
 	skin.italic.set_fg(Blue);
 	skin.inline_code.set_fg(Cyan);
 	skin.inline_code.set_bg(Black);
-	skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());
+	skin.print_inline(&stringified);
+	Ok(())
 }
 
 #[derive(Clap)]
@@ -151,8 +155,8 @@ struct Get {
 #[derive(Clap)]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Log {
-	#[clap(long)]
-	compact: bool,
+	// #[clap(long)]
+	// compact: bool,
 }
 
 fn main() {
@@ -160,15 +164,15 @@ fn main() {
 	let mut skin = MadSkin::default();
 	skin.italic.set_fg(Green);
 	skin.bold.set_fg(Red);
-	let mut stream =  TcpStream::connect("localhost:34254").unwrap();
+	let mut stream = TcpStream::connect("localhost:34254").unwrap();
 	match opts.subcmd {
 		QueryCmd::Add(query) => {
 			match query.subcmd {
 				EntityCmd::Block(b) => {
-					add_block(&stream, b.name, b.project);
+					if let Err(s) = add_block(&stream, b.name, b.project) {fail(&skin, "start new block", s);}
 					for tag in b.tags.split(",").map(str::to_string) {
 						let stream = TcpStream::connect("localhost:34254").unwrap();
-						add_tag(&stream, tag);
+						if let Err(s) = add_tag(&stream, tag) {fail(&skin, "add tag to new block", s);}
 					}
 					success(&skin, "started new block");
 				},
@@ -181,15 +185,17 @@ fn main() {
 			}
 		},
 		QueryCmd::Get(g) => {
-			if (g.rel.is_some()) {
-				get_block(&stream, Specifier::Relative(g.rel.unwrap()))
-			} else if (g.id.is_some()) {
-				get_block(&stream, Specifier::Id(pack_attr(&g.id.unwrap())))
+			let result: std::result::Result<(), String>;
+			if g.rel.is_some() {
+				result = get_block(&stream, Specifier::Relative(g.rel.unwrap()));
+			} else if g.id.is_some() {
+				result = get_block(&stream, Specifier::Id(pack_attr(&g.id.unwrap()).unwrap()));
 			} else {
-				get_block(&stream, Specifier::Relative(0))
+				result = get_block(&stream, Specifier::Relative(0));
 			}
+			if let Err(s) = result {fail(&skin, "get existing block", &s);}
 		},
-		QueryCmd::Log(r) => {
+		QueryCmd::Log(_r) => { // TODO add ranges
 			let req : Request = Request {
 				query: Query::LOG(Range::Term(Term::All), Fmt::Oneline),
 			};
@@ -201,8 +207,7 @@ fn main() {
 			skin.italic.set_fg(Blue);
 			skin.inline_code.set_fg(Cyan);
 			skin.inline_code.set_bg(Black);
-			skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());			
+			skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());
 		}
-		_ => (),
 	}
 }
