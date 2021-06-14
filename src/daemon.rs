@@ -1,12 +1,13 @@
 pub mod requests;
 pub use crate::requests::*;
 
-use std::thread;
-use std::time;
-use chrono::{Duration, DateTime, Local, Date, NaiveTime};
-use std::net::{TcpListener, TcpStream, Shutdown};
+use chrono::{Duration, DateTime, Local};
+use std::mem;
+use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
 use nanoid::nanoid;
+use flexi_logger::*;
+use log::*;
 
 fn unpack(mut s: Vec<u8>) -> String {
 	s.retain(|&x| x != 0);
@@ -65,10 +66,6 @@ impl Block {
 		}
 	}
 
-	fn add_tag(&mut self, tag: Tag) {
-		self.tags.push(tag);
-	}
-
 	fn to_oneline_string(&self) -> String {
 		return format!("\\* [`{}`] {}-{} *{}*\n",
 					   &self.id,
@@ -83,15 +80,11 @@ impl Block {
 		msg += &format!("**Start**: {}\n", &self.start.to_rfc2822());
 		msg.push_str("**Stop**: ");
 		match self.end {
-			Some(x) => {
-				msg += &x.to_rfc2822();
-				msg.push_str("\n**Duration**: ");
-				let dur = x.signed_duration_since(self.start);
-				// TODO handle days and weeks
-				msg += &format!("{:02}:{:02}:{:02}", dur.num_hours(), dur.num_minutes(), dur.num_seconds());
-			}
+			Some(x) => msg += &x.to_rfc2822(),
 			None => msg.push_str("None"),
-		}
+		}		
+		let dur: Duration = self.get_duration();
+		msg += &format!("\n**Duration**: {:02}:{:02}:{:02}", dur.num_hours(), dur.num_minutes(), dur.num_seconds());
 		msg.push_str("\n**Tags**: ");
 		for i in self.tags.iter() {
 			msg += &i.name;
@@ -108,68 +101,86 @@ impl Block {
 
 }
 
+fn write_stream(mut stream: &TcpStream, msg: String)
+{
+	match stream.write(msg.as_bytes()) {
+		Err(s) => error!("Failed to write to stream: {}", s),
+		_ => (),
+	}
+}
 
 struct Handler {
 	cache: Vec<Block>,
-	current: Block,
+	current: Option<Block>
 }
 
 impl Handler {
 	fn new() -> Handler {
 		Handler {
 			cache: Vec::new(),
-			current: Block::new(),
+			current: None,
 		}
 	}
 
-	fn handle_add(&mut self, mut stream: &TcpStream, e: Entity) {
+	fn handle_add(&mut self, stream: &TcpStream, e: Entity) {
 		match e {
 			Entity::Block(name, proj) => {
-				self.current.stop();
-				self.cache.push(self.current.clone());
-				self.current = Block::new();
-				self.current.name = unpack(name.to_vec());
-				self.current.project = Some(Project {name: unpack(proj.to_vec())});
+				if let Some(i) = &mut self.current {
+					i.stop();
+					self.cache.push(i.clone());
+				}
+				let mut tmp: Block = Block::new();
+				tmp.name = unpack(name.to_vec());
+				tmp.project = Some(Project {name: unpack(proj.to_vec())});
+				self.current = Some(tmp);
 			},
-			Entity::Tag(tag) => self.current.tags.push(Tag {name: unpack(tag.to_vec())}),
-			Entity::Project(proj) => self.current.project = Some(Project {name: unpack(proj.to_vec())}),
+			Entity::Tag(tag) => {
+				if let Some(i) = &mut self.current {
+					i.tags.push(Tag {name: unpack(tag.to_vec())})
+				} else {write_stream(stream, String::from("ERR: no existing block"));}
+			}
+			Entity::Project(proj) => {
+				if let Some(i) = &mut self.current {
+					i.project = Some(Project {name: unpack(proj.to_vec())});
+				} else {write_stream(stream, String::from("ERR: no existing block"));}
+			}
 		}
 	}
 
-	fn handle_get(&self, mut stream: &TcpStream, s: Specifier) {
+	fn handle_get(&self, stream: &TcpStream, s: Specifier) {
 		match s {
 			Specifier::Relative(rel) => {
-				if (rel == 0) {
-					stream.write(self.current.to_detailed_string().as_bytes()).unwrap();
+				if rel == 0 {
+					if let Some(i) = &self.current {
+						write_stream(stream, i.to_detailed_string());
+					} else {write_stream(stream, String::from("ERR: no existing block"));}
 				} else {
-					stream.write(self.cache[self.cache.len() - rel].to_detailed_string().as_bytes()).unwrap();
+					if rel >= self.cache.len() {
+						write_stream(stream, String::from("ERR: out of range"));
+					} else {
+						write_stream(stream, self.cache[self.cache.len() - rel].to_detailed_string());
+					}
 				}
 			},
 			Specifier::Id(id) => {
 				let ident = unpack(id.to_vec());
-				for block in self.cache.iter() {
+				for block in self.cache.iter() { // TODO hashmap
 					if block.id.eq(&ident) {
-						stream.write(block.to_detailed_string().as_bytes()).unwrap();
+						write_stream(stream, block.to_detailed_string());
 					}
 				}
 			}
-			_ => (),
 		}
 	}
 
-	fn handle_log(&self, mut stream: &TcpStream, r: Range, f: Fmt) {
+	fn handle_log(&self, mut stream: &TcpStream, r: Range, _f: Fmt) { // TODO use fmt
 		match r {
 			Range::Term(t) => match t {
-				Term::Today => todo!(),
-				Term::Yesterday => todo!(),
-				Term::Week => todo!(),
-				Term::Month => todo!(),
-				Term::Year => todo!(),
 				Term::All => {
 					let mut msg: String = String::new();
 					let mut date: DateTime<Local> = self.cache[self.cache.len()-1].start + Duration::days(1);
 					for i in self.cache[1..].iter().rev() {
-						if (i.start.signed_duration_since(date).num_hours() <= -24) {
+						if i.start.signed_duration_since(date).num_hours() <= -24 {
 							date = i.start;
 							if i.id.ne(&self.cache[self.cache.len()-1].id) {
 								msg.push_str("\n");
@@ -180,33 +191,33 @@ impl Handler {
 					}
 					stream.write(msg.as_bytes()).unwrap();
 				},
+				_ => (),
 			},
-			Range::TimeRange(_, _) => todo!(),
-			Range::RelativeRange(beg, end) => todo!(),
+			_ => (),
 		}
 	}
 }
 
 fn main() {
+	Logger::try_with_env_or_str("info").unwrap()
+		.log_to_file(FileSpec::default().basename("memexd").directory("logs"))
+		.start().unwrap();
 	let mut handler = Handler::new();
-	let mut listener = TcpListener::bind("127.0.0.1:34254").unwrap();
+	let listener = TcpListener::bind("127.0.0.1:34254").unwrap();
 	for stream in listener.incoming() {
 		match stream {
 			Ok(mut stream) => {
-				let mut buf = [0; std::mem::size_of::<Request>()];
+				let mut buf = [0; mem::size_of::<Request>()];
 				let req: Request;
 				stream.read(&mut buf).unwrap();
-				unsafe {req = std::mem::transmute::<[u8; std::mem::size_of::<Request>()], Request>(buf);}
+				unsafe {req = mem::transmute::<[u8; mem::size_of::<Request>()], Request>(buf);}
 				match req.query {
 					Query::ADD(e) => handler.handle_add(&stream, e),
 					Query::GET(s) => handler.handle_get(&stream, s),
 					Query::LOG(r,f) => handler.handle_log(&stream, r, f),
-					_ => (),
 				}
 			},
-			Err(e) => {
-				println!("Error: {}", e);
-			},
+			Err(e) => error!("Error in opening stream: {}", e),
 		}
 	}
 	drop(listener);
