@@ -70,7 +70,7 @@ impl Block {
 		return format!("\\* [`{}`] {}-{} *{}*\n",
 					   &self.id,
 					   &self.start.time().to_string().split(".").collect::<Vec<&str>>()[0], // HACK
-					   &self.end.unwrap().time().to_string().split(".").collect::<Vec<&str>>()[0], // HACK
+					   &self.end.unwrap_or(Local::now()).time().to_string().split(".").collect::<Vec<&str>>()[0], // HACK
 					   &self.name);
 	}
 
@@ -174,7 +174,7 @@ impl Handler {
 		}
 	}
 
-	fn handle_log(&self, mut stream: &TcpStream, r: Range, _f: Fmt) { // TODO use fmt
+	fn handle_log(&self, stream: &TcpStream, r: Range, _f: Fmt) { // TODO use fmt
 		match r {
 			Range::Term(t) => match t {
 				Term::All => {
@@ -190,7 +190,7 @@ impl Handler {
 						}
 						msg+=&i.to_oneline_string();
 					}
-					stream.write(msg.as_bytes()).unwrap();
+					write_stream(stream, msg);
 				},
 				_ => (),
 			},
@@ -210,7 +210,9 @@ fn main() {
 			Ok(mut stream) => {
 				let mut buf = [0; mem::size_of::<Request>()];
 				let req: Request;
-				stream.read(&mut buf).unwrap();
+				if let Err(s) = stream.read(&mut buf) {
+					error!("Faile to read from stream: {}", s);
+				}
 				unsafe {req = mem::transmute::<[u8; mem::size_of::<Request>()], Request>(buf);}
 				match req.query {
 					Query::ADD(e) => handler.handle_add(&stream, e),
