@@ -4,10 +4,12 @@ pub use crate::requests::*;
 use chrono::{Duration, DateTime, Local};
 use std::mem;
 use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write};
+use std::io::{Read, Write, BufRead};
 use nanoid::nanoid;
 use flexi_logger::*;
 use log::*;
+use std::fs::*;
+use::std::path::Path;
 
 fn unpack(mut s: Vec<u8>) -> String {
 	s.retain(|&x| x != 0);
@@ -52,6 +54,10 @@ impl Block {
 		}
 	}
 
+	fn from(s: &String) -> Block {	
+		return Block::new(); // TODO 
+	}
+	
 	fn get_duration(&self) -> Duration {
 		match self.end {
 			Some(x) => x.signed_duration_since(self.start),
@@ -82,7 +88,7 @@ impl Block {
 		match self.end {
 			Some(x) => msg += &x.to_rfc2822(),
 			None => msg.push_str("None"),
-		}		
+		}
 		let dur: Duration = self.get_duration();
 		msg += &format!("\n**Duration**: {:02}:{:02}:{:02}", dur.num_hours(), dur.num_minutes(), dur.num_seconds());
 		msg.push_str("\n**Tags**: ");
@@ -109,8 +115,11 @@ fn write_stream(mut stream: &TcpStream, msg: String)
 	}
 }
 
+// TIMESTAMP|TIMESTAMP|"name purposely | causing abuse"|Memex|test,rust
+
 struct Handler {
 	cache: Vec<Block>,
+	file: File,
 	current: Option<Block>
 }
 
@@ -118,9 +127,29 @@ impl Handler {
 	fn new() -> Handler {
 		Handler {
 			cache: Vec::new(),
+			file: File::open(&Path::new("data.txt")).unwrap(), // TODO Handle errors.
 			current: None,
 		}
 	}
+
+	fn get(&self, rel: usize) -> std::result::Result<Block, &'static str> {
+		if rel == 0 {
+			if let Some(c) = self.current.clone() {
+				return Ok(c);
+			} else {return Err("No current block");}
+		} else if rel <= self.cache.len() {
+			return Ok(self.cache[self.cache.len()-rel-1].clone());
+		} else {
+			let mut reader = std::io::BufReader::new(&self.file);
+			for _i in self.cache.len()+1..rel {
+				let mut line = String::new();
+				if let Ok(_sz) = reader.read_line(&mut line) {
+					return Ok(Block::from(&line));
+				} else {return Err("No block found.")};
+			}
+		}
+		Err("No block found.")
+	}	
 
 	fn handle_add(&mut self, stream: &TcpStream, e: Entity) {
 		match e {
@@ -198,6 +227,13 @@ impl Handler {
 		}
 	}
 }
+
+// impl Iterator for Handler {
+// 	type Item = Block;
+// 	fn next(&mut self) -> Option<Block> {
+		
+// 	}
+// }
 
 fn main() {
 	Logger::try_with_env_or_str("info").unwrap()
