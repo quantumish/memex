@@ -4,12 +4,14 @@ pub use crate::requests::*;
 use chrono::{Duration, DateTime, Local};
 use std::mem;
 use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write, BufRead};
+use std::io::{Read, Write, BufRead, Seek};
 use nanoid::nanoid;
 use flexi_logger::*;
 use log::*;
 use std::fs::*;
 use::std::path::Path;
+
+const MAX_CACHE_LEN: u32 = 1;
 
 fn unpack(mut s: Vec<u8>) -> String {
 	s.retain(|&x| x != 0);
@@ -54,10 +56,10 @@ impl Block {
 		}
 	}
 
-	fn from(s: &String) -> Block {	
-		return Block::new(); // TODO 
+	fn from(s: &String) -> Block {
+		return Block::new(); // TODO
 	}
-	
+
 	fn get_duration(&self) -> Duration {
 		match self.end {
 			Some(x) => x.signed_duration_since(self.start),
@@ -149,7 +151,19 @@ impl Handler {
 			}
 		}
 		Err("No block found.")
-	}	
+	}
+
+	fn add_new(&mut self, b: Block) -> std::result::Result<(), &'static str> {
+		if let Some(cur) = self.current.clone() {
+			self.cache.push(cur);
+			if self.cache.len() > MAX_CACHE_LEN as usize {
+				let mut writer = std::io::BufWriter::new(&self.file);
+				writer.seek(std::io::SeekFrom::End(0));
+				writer.write(self.cache[0].to_oneline_string().as_bytes());
+			}
+		}
+		Ok(())
+	}
 
 	fn handle_add(&mut self, stream: &TcpStream, e: Entity) {
 		match e {
@@ -229,10 +243,10 @@ impl Handler {
 }
 
 // impl Iterator for Handler {
-// 	type Item = Block;
-// 	fn next(&mut self) -> Option<Block> {
-		
-// 	}
+//	type Item = Block;
+//	fn next(&mut self) -> Option<Block> {
+
+//	}
 // }
 
 fn main() {
