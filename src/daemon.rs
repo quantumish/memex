@@ -8,8 +8,8 @@ use std::io::{Read, Write, BufRead, Seek};
 use nanoid::nanoid;
 use flexi_logger::*;
 use log::*;
-use std::fs::*;
-use::std::path::Path;
+use std::fs::{OpenOptions};
+use std::path::Path;
 
 const MAX_CACHE_LEN: u32 = 1;
 
@@ -117,11 +117,9 @@ fn write_stream(mut stream: &TcpStream, msg: String)
 	}
 }
 
-// TIMESTAMP|TIMESTAMP|"name purposely | causing abuse"|Memex|test,rust
-
 struct Handler {
 	cache: Vec<Block>,
-	file: File,
+	file: String,
 	current: Option<Block>
 }
 
@@ -129,7 +127,7 @@ impl Handler {
 	fn new() -> Handler {
 		Handler {
 			cache: Vec::new(),
-			file: File::open(&Path::new("data.txt")).unwrap(), // TODO Handle errors.
+			file: String::from("data.txt"),
 			current: None,
 		}
 	}
@@ -142,7 +140,8 @@ impl Handler {
 		} else if rel <= self.cache.len() {
 			return Ok(self.cache[self.cache.len()-rel-1].clone());
 		} else {
-			let mut reader = std::io::BufReader::new(&self.file);
+			let mut reader = std::io::BufReader::new(
+				OpenOptions::new().read(true).open(&self.file).unwrap());
 			for _i in self.cache.len()+1..rel {
 				let mut line = String::new();
 				if let Ok(_sz) = reader.read_line(&mut line) {
@@ -153,34 +152,33 @@ impl Handler {
 		Err("No block found.")
 	}
 
-	fn add_new(&mut self, b: Block) -> std::result::Result<(), &'static str> {
-		if let Some(cur) = self.current.clone() {
-			self.cache.push(cur);
+	fn add_new(&mut self, name: String, proj: String) -> std::result::Result<(), &'static str> {
+		if let Some(cur) = &mut self.current {
+			cur.stop();
+			self.cache.push(cur.clone());
 			if self.cache.len() > MAX_CACHE_LEN as usize {
-				let mut writer = std::io::BufWriter::new(&self.file);
-				writer.seek(std::io::SeekFrom::End(0));
-				writer.write(self.cache[0].to_oneline_string().as_bytes());
+				let mut writer = std::io::BufWriter::new(
+					OpenOptions::new().append(true).open(&self.file).unwrap());
+				writer.write(self.cache[0].to_oneline_string().as_bytes()).unwrap();
 			}
+			self.cache.drain(0..1);
 		}
+		let mut tmp: Block = Block::new();
+		tmp.name = name;
+		tmp.project = Some(Project {name: proj});
+		self.current = Some(tmp);
 		Ok(())
 	}
 
 	fn handle_add(&mut self, stream: &TcpStream, e: Entity) {
 		match e {
-			Entity::Block(name, proj) => {
-				if let Some(i) = &mut self.current {
-					i.stop();
-					self.cache.push(i.clone());
-				}
-				let mut tmp: Block = Block::new();
-				tmp.name = unpack(name.to_vec());
-				tmp.project = Some(Project {name: unpack(proj.to_vec())});
-				self.current = Some(tmp);
-			},
+			Entity::Block(name, proj) =>
+				self.add_new(unpack(name.to_vec()), unpack(proj.to_vec())).unwrap(),
 			Entity::Tag(tag) => {
 				if let Some(i) = &mut self.current {
 					i.tags.push(Tag {name: unpack(tag.to_vec())})
 				} else {write_stream(stream, String::from("ERR: no existing block"));}
+
 			}
 			Entity::Project(proj) => {
 				if let Some(i) = &mut self.current {
@@ -197,12 +195,8 @@ impl Handler {
 					if let Some(i) = &self.current {
 						write_stream(stream, i.to_detailed_string());
 					} else {write_stream(stream, String::from("ERR: no existing block"));}
-				} else {
-					if rel > self.cache.len() {
-						write_stream(stream, String::from("ERR: out of range"));
-					} else {
-						write_stream(stream, self.cache[self.cache.len()-rel-1].to_detailed_string());
-					}
+				} else {									
+					write_stream(stream, self.get(rel).unwrap().to_detailed_string());
 				}
 			},
 			Specifier::Id(id) => {
