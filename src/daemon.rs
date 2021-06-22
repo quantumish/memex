@@ -12,7 +12,7 @@ use std::fs::{OpenOptions};
 use serde::{Serialize, Deserialize};
 
 const MAX_CACHE_LEN: u32 = 1;
-const LOG_FMT_STRING: &'static str = "[`%i`] %s %e *%n*\n";
+const LOG_FMT_STRING: &'static str = "/* [`%i`] %s %e *%n*\n";
 const DISPLAY_FMT_STRING: &'static str =
 	"[`%i`] *%n*\n**Start**: %s\n**Stop**: %e\n**Tags**: %t\n**Project**: %p\n";
 
@@ -145,7 +145,7 @@ impl Handler {
 				};
 			}
 			println!("{}", &line.trim());
-			let out: Block = serde_json::from_str(&line.trim());			
+			let out: Block = serde_json::from_str(&line.trim()).unwrap();			
 			return Ok(out.clone());			
 		}
 		Err("No block found.")
@@ -205,9 +205,9 @@ impl Handler {
 					write_stream(stream, self.get(rel).unwrap().to_format(DISPLAY_FMT_STRING));
 				}
 			},
-			Specifier::Id(id) => {
+			Specifier::Id(id) => {				
 				let ident = unpack(id.to_vec());
-				for block in self.cache.iter() { // TODO hashmap
+				for block in self.iter() { 
 					if block.id.eq(&ident) {
 						write_stream(stream, block.to_format(DISPLAY_FMT_STRING));
 					}
@@ -223,7 +223,7 @@ impl Handler {
 				Term::All => {
 					let mut msg: String = String::new();
 					let mut date: DateTime<Local> = self.cache[self.cache.len()-1].start + Duration::days(1);
-					for i in self.cache[1..].iter().rev() {
+					for i in self.iter() {
 						if i.start.signed_duration_since(date).num_hours() <= -24 {
 							date = i.start;
 							if i.id.ne(&self.cache[self.cache.len()-1].id) {
@@ -240,14 +240,15 @@ impl Handler {
 			_ => (),
 		}
 	}
+
+	fn iter(&self) -> std::iter::Chain<impl Iterator<Item = Block> + '_, impl Iterator<Item = Block>> {
+		let mut reader = std::io::BufReader::new(
+			OpenOptions::new().read(true).open(&self.file).unwrap());
+		self.cache.iter().cloned().
+			chain(reader.lines()
+				  .map(|line| serde_json::from_str(&line.unwrap().trim()).unwrap()))
+	}
 }
-
-// impl Iterator for Handler {
-//	type Item = Block;
-//	fn next(&mut self) -> Option<Block> {
-
-//	}
-// }
 
 fn main() {
 	Logger::try_with_env_or_str("info").unwrap()
