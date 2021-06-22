@@ -4,14 +4,17 @@ pub use crate::requests::*;
 use chrono::{Duration, DateTime, Local};
 use std::mem;
 use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write, BufRead, Seek};
+use std::io::{Read, Write, BufRead};
 use nanoid::nanoid;
 use flexi_logger::*;
 use log::*;
 use std::fs::{OpenOptions};
-use std::path::Path;
+use serde::{Serialize, Deserialize};
 
 const MAX_CACHE_LEN: u32 = 1;
+const LOG_FMT_STRING: &'static str = "[`%i`] %s %e *%n*\n";
+const DISPLAY_FMT_STRING: &'static str =
+	"[`%i`] *%n*\n**Start**: %s\n**Stop**: %e\n**Tags**: %t\n**Project**: %p\n";
 
 fn unpack(mut s: Vec<u8>) -> String {
 	s.retain(|&x| x != 0);
@@ -21,17 +24,29 @@ fn unpack(mut s: Vec<u8>) -> String {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 struct Tag {
 	name: String
 }
 
-#[derive(Clone)]
+impl Tag {
+	fn to_string(&self) -> String {
+		self.name.clone()
+	}
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct Project {
 	name: String
 }
 
-#[derive(Clone)]
+impl Project {	
+	fn to_string(&self) -> String {
+		self.name.clone()
+	}
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Block {
 	name: String,
 	start: DateTime<Local>,
@@ -56,8 +71,21 @@ impl Block {
 		}
 	}
 
-	fn from(s: &String) -> Block {
-		return Block::new(); // TODO
+	fn to_format(&self, fmt: &'static str) -> String {
+		let end: String;
+		match &self.end {
+			Some(e) => end = e.to_rfc2822(),
+			None => end = String::from("None"),
+		};
+		return fmt
+			.replace("%i", &self.id)
+			.replace("%s", &self.start.to_rfc2822())
+			.replace("%e", &end)
+			.replace("%N", &Local::now().to_rfc2822())
+			.replace("%n", &self.name)
+			.replace("%t", &self.tags.clone().into_iter().map(|t| t.to_string())
+					 .collect::<Vec<String>>().join(" ").clone())
+			.replace("%p", &self.project.clone().unwrap().to_string())				
 	}
 
 	fn get_duration(&self) -> Duration {
@@ -73,40 +101,6 @@ impl Block {
 			None => self.end = Some(Local::now()),
 		}
 	}
-
-	fn to_oneline_string(&self) -> String {
-		return format!("\\* [`{}`] {}-{} *{}*\n",
-					   &self.id,
-					   &self.start.time().to_string().split(".").collect::<Vec<&str>>()[0], // HACK
-					   &self.end.unwrap_or(Local::now()).time().to_string().split(".").collect::<Vec<&str>>()[0], // HACK
-					   &self.name);
-	}
-
-	fn to_detailed_string(&self) -> String {
-		let mut msg: String = String::new();
-		msg += &format!("[`{}`] *{}*\n", &self.id, &self.name);
-		msg += &format!("**Start**: {}\n", &self.start.to_rfc2822());
-		msg.push_str("**Stop**: ");
-		match self.end {
-			Some(x) => msg += &x.to_rfc2822(),
-			None => msg.push_str("None"),
-		}
-		let dur: Duration = self.get_duration();
-		msg += &format!("\n**Duration**: {:02}:{:02}:{:02}", dur.num_hours(), dur.num_minutes(), dur.num_seconds());
-		msg.push_str("\n**Tags**: ");
-		for i in self.tags.iter() {
-			msg += &i.name;
-			msg.push_str(" ");
-		}
-		msg.push_str("\n**Project**: ");
-		match self.project.clone() {
-			Some(x) => msg += &x.name,
-			None => msg.push_str("None"),
-		}
-		msg.push_str("\n");
-		msg
-	}
-
 }
 
 fn write_stream(mut stream: &TcpStream, msg: String)
@@ -127,12 +121,13 @@ impl Handler {
 	fn new() -> Handler {
 		Handler {
 			cache: Vec::new(),
-			file: String::from("data.txt"),
+			file: String::from("data.json"),
 			current: None,
 		}
 	}
 
 	fn get(&self, rel: usize) -> std::result::Result<Block, &'static str> {
+		println!("{} {}", rel, self.cache.len());
 		if rel == 0 {
 			if let Some(c) = self.current.clone() {
 				return Ok(c);
@@ -142,12 +137,16 @@ impl Handler {
 		} else {
 			let mut reader = std::io::BufReader::new(
 				OpenOptions::new().read(true).open(&self.file).unwrap());
-			for _i in self.cache.len()+1..rel {
-				let mut line = String::new();
-				if let Ok(_sz) = reader.read_line(&mut line) {
-					return Ok(Block::from(&line));
-				} else {return Err("No block found.")};
+			let mut line = String::new();
+			for _i in self.cache.len()..rel {				
+				line.clear();
+				if let Err(_) = reader.read_line(&mut line) {
+					return Err("No block found.")
+				};
 			}
+			println!("{}", &line.trim());
+			let out: Block = serde_json::from_str(&line.trim());			
+			return Ok(out.clone());			
 		}
 		Err("No block found.")
 	}
@@ -158,10 +157,17 @@ impl Handler {
 			self.cache.push(cur.clone());
 			if self.cache.len() > MAX_CACHE_LEN as usize {
 				let mut writer = std::io::BufWriter::new(
-					OpenOptions::new().append(true).open(&self.file).unwrap());
-				writer.write(self.cache[0].to_oneline_string().as_bytes()).unwrap();
+					OpenOptions::new().append(true).create(true).
+						open(self.file.clone()+&String::from(".tmp")).unwrap());
+				let mut reader = std::io::BufReader::new(
+					OpenOptions::new().read(true).open(&self.file).unwrap());
+				writer.write((serde_json::to_string(&self.cache[0]).unwrap()+"\n").as_bytes()).unwrap();
+				for line in reader.lines() {
+					writer.write((line.unwrap()+"\n").as_bytes());
+				}
+				std::fs::rename("data.json.tmp", "data.json");
+				self.cache.drain(0..1);
 			}
-			self.cache.drain(0..1);
 		}
 		let mut tmp: Block = Block::new();
 		tmp.name = name;
@@ -193,17 +199,17 @@ impl Handler {
 			Specifier::Relative(rel) => {
 				if rel == 0 {
 					if let Some(i) = &self.current {
-						write_stream(stream, i.to_detailed_string());
+						write_stream(stream, i.to_format(DISPLAY_FMT_STRING));
 					} else {write_stream(stream, String::from("ERR: no existing block"));}
 				} else {									
-					write_stream(stream, self.get(rel).unwrap().to_detailed_string());
+					write_stream(stream, self.get(rel).unwrap().to_format(DISPLAY_FMT_STRING));
 				}
 			},
 			Specifier::Id(id) => {
 				let ident = unpack(id.to_vec());
 				for block in self.cache.iter() { // TODO hashmap
 					if block.id.eq(&ident) {
-						write_stream(stream, block.to_detailed_string());
+						write_stream(stream, block.to_format(DISPLAY_FMT_STRING));
 					}
 				}
 				write_stream(stream, String::from("ERR: invalid ID"));
@@ -225,7 +231,7 @@ impl Handler {
 							}
 							msg+=&format!("{}\n", i.start.date().format("%B %d, %Y"));
 						}
-						msg+=&i.to_oneline_string();
+						msg+=&i.to_format(LOG_FMT_STRING);
 					}
 					write_stream(stream, msg);
 				},
