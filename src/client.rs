@@ -6,8 +6,15 @@ use termimad::*;
 use std::net::TcpStream;
 use std::io::{Read, Write};
 
-
 // HACK this is really dumb
+
+fn unpack(mut s: Vec<u8>) -> String {
+	s.retain(|&x| x != 0);
+	match std::str::from_utf8(&s) {
+		Ok(x) => String::from(x),
+		Err(_x) => panic!("Failed to unpack."),
+	}
+}
 
 fn pack_attr(s: &String) -> std::result::Result<[u8; MAX_ATTR_NAME], &'static str> {
 	let chars: Vec<char> = s.chars().collect();
@@ -197,17 +204,21 @@ fn main() {
 		},
 		QueryCmd::Log(_r) => { // TODO add ranges
 			let req : Request = Request {
-				query: Query::LOG(Range::Term(Term::All), Fmt::Oneline),
+				query: Query::LOG(Range::Term(Term::All)),
 			};
 			send_request(&stream, req).unwrap();
 			let mut response: [u8; 1024] = [0; 1024];
 			stream.read(&mut response).unwrap();
-			let mut skin = MadSkin::default();
-			skin.bold.set_fg(Blue);
-			skin.italic.set_fg(Blue);
-			skin.inline_code.set_fg(Cyan);
-			skin.inline_code.set_bg(Black);
-			skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());
+			let len = unpack(response.to_vec()).parse::<i32>().unwrap();
+			for i in 0..len {
+				stream.read(&mut response).unwrap();
+				let mut skin = MadSkin::default();
+				skin.bold.set_fg(Blue);
+				skin.italic.set_fg(Blue);
+				skin.inline_code.set_fg(Cyan);
+				skin.inline_code.set_bg(Black);
+				skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());
+			}
 		}
 	}
 }

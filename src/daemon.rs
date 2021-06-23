@@ -12,7 +12,7 @@ use std::fs::{OpenOptions};
 use serde::{Serialize, Deserialize};
 
 const MAX_CACHE_LEN: u32 = 1;
-const LOG_FMT_STRING: &'static str = "/* [`%i`] %s %e *%n*\n";
+const LOG_FMT_STRING: &'static str = "\\* [`%i`] %s %e *%n*\n";
 const DISPLAY_FMT_STRING: &'static str =
 	"[`%i`] *%n*\n**Start**: %s\n**Stop**: %e\n**Tags**: %t\n**Project**: %p\n";
 
@@ -217,7 +217,7 @@ impl Handler {
 		}
 	}
 
-	fn handle_log(&self, stream: &TcpStream, r: Range, _f: Fmt) { // TODO use fmt
+	fn handle_log(&self, stream: &TcpStream, r: Range) { // TODO use fmt
 		match r {
 			Range::Term(t) => match t {
 				Term::All => {
@@ -233,7 +233,12 @@ impl Handler {
 						}
 						msg+=&i.to_format(LOG_FMT_STRING);
 					}
-					write_stream(stream, msg);
+					let lines = msg.split("\n");
+					let num_lines = lines.collect::<Vec<&str>>().len();
+					write_stream(stream, num_lines.to_string());
+					for l in msg.split("\n") {
+						write_stream(stream, String::from(l)+"\n");
+					}
 				},
 				_ => (),
 			},
@@ -268,7 +273,7 @@ fn main() {
 				match req.query {
 					Query::ADD(e) => handler.handle_add(&stream, e),
 					Query::GET(s) => handler.handle_get(&stream, s),
-					Query::LOG(r,f) => handler.handle_log(&stream, r, f),
+					Query::LOG(r) => handler.handle_log(&stream, r),
 				}
 			},
 			Err(e) => error!("Error in opening stream: {}", e),
