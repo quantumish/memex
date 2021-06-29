@@ -207,18 +207,28 @@ fn main() {
 				query: Query::LOG(Range::Term(Term::All)),
 			};
 			send_request(&stream, req).unwrap();
+			let mut log: String = String::new();
 			let mut response: [u8; 1024] = [0; 1024];
-			stream.read(&mut response).unwrap();
-			let len = unpack(response.to_vec()).parse::<i32>().unwrap();
-			for i in 0..len {
-				stream.read(&mut response).unwrap();
-				let mut skin = MadSkin::default();
-				skin.bold.set_fg(Blue);
-				skin.italic.set_fg(Blue);
-				skin.inline_code.set_fg(Cyan);
-				skin.inline_code.set_bg(Black);
-				skin.print_inline(&String::from_utf8(response.to_vec()).unwrap());
-			}
+			stream.read(&mut response).unwrap();			
+			let len = unpack(response.to_vec()).parse::<usize>().unwrap();
+			let mut read_size: usize = 0;
+			loop {
+				let sz = stream.read(&mut response).unwrap();
+				if (sz > len-read_size) {
+					log += &String::from_utf8(response[..len-read_size].to_vec()).unwrap();
+				} else {
+					log += &String::from_utf8(response.to_vec()).unwrap();
+				}
+				println!("{}, {}, {}\n{}", len, read_size, sz,  log);
+				if read_size < 1024 {break;}
+				read_size += sz;
+			} 
+			let mut skin = MadSkin::default();
+			skin.bold.set_fg(Blue);
+			skin.italic.set_fg(Blue);
+			skin.inline_code.set_fg(Cyan);
+			skin.inline_code.set_bg(Black);
+			skin.print_inline(&log);
 		}
 	}
 }

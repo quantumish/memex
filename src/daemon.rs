@@ -222,23 +222,11 @@ impl Handler {
 			Range::Term(t) => match t {
 				Term::All => {
 					let mut msg: String = String::new();
-					let mut date: DateTime<Local> = self.cache[self.cache.len()-1].start + Duration::days(1);
 					for i in self.iter() {
-						if i.start.signed_duration_since(date).num_hours() <= -24 {
-							date = i.start;
-							if i.id.ne(&self.cache[self.cache.len()-1].id) {
-								msg.push_str("\n");
-							}
-							msg+=&format!("{}\n", i.start.date().format("%B %d, %Y"));
-						}
 						msg+=&i.to_format(LOG_FMT_STRING);
 					}
-					let lines = msg.split("\n");
-					let num_lines = lines.collect::<Vec<&str>>().len();
-					write_stream(stream, num_lines.to_string());
-					for l in msg.split("\n") {
-						write_stream(stream, String::from(l)+"\n");
-					}
+					write_stream(stream, msg.len().to_string());
+					write_stream(stream, msg);
 				},
 				_ => (),
 			},
