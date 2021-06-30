@@ -127,7 +127,6 @@ impl Handler {
 	}
 
 	fn get(&self, rel: usize) -> std::result::Result<Block, &'static str> {
-		println!("{} {}", rel, self.cache.len());
 		if rel == 0 {
 			if let Some(c) = self.current.clone() {
 				return Ok(c);
@@ -144,11 +143,9 @@ impl Handler {
 					return Err("No block found.")
 				};
 			}
-			println!("{}", &line.trim());
 			let out: Block = serde_json::from_str(&line.trim()).unwrap();			
 			return Ok(out.clone());			
 		}
-		Err("No block found.")
 	}
 
 	fn add_new(&mut self, name: String, proj: String) -> std::result::Result<(), &'static str> {
@@ -225,7 +222,7 @@ impl Handler {
 					for i in self.iter() {
 						msg+=&i.to_format(LOG_FMT_STRING);
 					}
-					write_stream(stream, msg.len().to_string());
+					write_stream(stream, format!("{:0width$}\n", msg.len(), width=64));
 					write_stream(stream, msg);
 				},
 				_ => (),

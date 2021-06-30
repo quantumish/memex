@@ -57,13 +57,13 @@ fn send_request(mut stream: &TcpStream, req: Request) -> std::result::Result<(),
 	// let mut buf: [u8; 16] = [0; 16];
 	// stream.set_read_timeout(Some(std::time::Duration::new(1,0)));
 	// match stream.read(&mut buf) {
-	// 	Ok(_) => {
-	// 		if (buf[0] != 1) {
-	// 			return Err("failed to recieve response from daemon");
-	// 		}
-	// 		Ok(())
-	// 	},
-	// 	Err(x) => Err("failed to read from socket"),
+	//	Ok(_) => {
+	//		if (buf[0] != 1) {
+	//			return Err("failed to recieve response from daemon");
+	//		}
+	//		Ok(())
+	//	},
+	//	Err(x) => Err("failed to read from socket"),
 	// }
 	Ok(())
 }
@@ -208,21 +208,22 @@ fn main() {
 			};
 			send_request(&stream, req).unwrap();
 			let mut log: String = String::new();
-			let mut response: [u8; 1024] = [0; 1024];
-			stream.read(&mut response).unwrap();			
-			let len = unpack(response.to_vec()).parse::<usize>().unwrap();
+			let mut response: [u8; 64] = [0; 64];
+			stream.read(&mut response).unwrap();
+			let len = String::from_utf8(response.to_vec()).unwrap().parse::<usize>().unwrap();
 			let mut read_size: usize = 0;
+			let mut response: [u8; 4096] = [0; 4096];
 			loop {
 				let sz = stream.read(&mut response).unwrap();
-				if (sz > len-read_size) {
+				if sz > len-read_size {
 					log += &String::from_utf8(response[..len-read_size].to_vec()).unwrap();
+					break;
 				} else {
 					log += &String::from_utf8(response.to_vec()).unwrap();
 				}
-				println!("{}, {}, {}\n{}", len, read_size, sz,  log);
-				if read_size < 1024 {break;}
 				read_size += sz;
-			} 
+			}
+			log.push_str("\n");
 			let mut skin = MadSkin::default();
 			skin.bold.set_fg(Blue);
 			skin.italic.set_fg(Blue);
