@@ -214,7 +214,7 @@ fn main() {
 			let mut read_size: usize = 0;
 			let mut response: [u8; 4096] = [0; 4096];
 			loop {
-				let sz = stream.read(&mut response).unwrap();
+				let sz = stream.read(&mut response).unwrap();				
 				if sz > len-read_size {
 					log += &String::from_utf8(response[..len-read_size].to_vec()).unwrap();
 					break;
@@ -229,7 +229,8 @@ fn main() {
 			skin.italic.set_fg(Blue);
 			skin.inline_code.set_fg(Cyan);
 			skin.inline_code.set_bg(Black);
-			skin.print_inline(&log);
+			skin.print_inline(&log[2..]); // HACK
 		}
 	}
 }
+

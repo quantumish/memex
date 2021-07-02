@@ -12,7 +12,7 @@ use std::fs::{OpenOptions};
 use serde::{Serialize, Deserialize};
 
 const MAX_CACHE_LEN: u32 = 1;
-const LOG_FMT_STRING: &'static str = "\\* [`%i`] %s %e *%n*\n";
+const LOG_FMT_STRING: &'static str = "\\* [`%i`] %S-%E *%n* (%p)\n";
 const DISPLAY_FMT_STRING: &'static str =
 	"[`%i`] *%n*\n**Start**: %s\n**Stop**: %e\n**Tags**: %t\n**Project**: %p\n";
 
@@ -81,6 +81,8 @@ impl Block {
 			.replace("%i", &self.id)
 			.replace("%s", &self.start.to_rfc2822())
 			.replace("%e", &end)
+			.replace("%S", &self.start.time().to_string().split(".").collect::<Vec<&str>>()[0]) // HACK
+			.replace("%E", &self.end.unwrap().time().to_string().split(".").collect::<Vec<&str>>()[0]) // HACK
 			.replace("%N", &Local::now().to_rfc2822())
 			.replace("%n", &self.name)
 			.replace("%t", &self.tags.clone().into_iter().map(|t| t.to_string())
@@ -214,12 +216,17 @@ impl Handler {
 		}
 	}
 
-	fn handle_log(&self, stream: &TcpStream, r: Range) { // TODO use fmt
+	fn handle_log(&self, mut stream: &TcpStream, r: Range) { // TODO use fmt
 		match r {
 			Range::Term(t) => match t {
 				Term::All => {
 					let mut msg: String = String::new();
+					let mut date: DateTime<Local> = Local::now() + Duration::days(1);
 					for i in self.iter() {
+						if i.start.signed_duration_since(date).num_hours() <= -24 {
+							date = i.start;
+							msg+=&format!("\n{}\n", i.start.date().format("%B %d, %Y"));
+						}
 						msg+=&i.to_format(LOG_FMT_STRING);
 					}
 					write_stream(stream, format!("{:0width$}\n", msg.len(), width=64));
