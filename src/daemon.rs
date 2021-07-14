@@ -10,6 +10,8 @@ use flexi_logger::*;
 use log::*;
 use std::fs::{OpenOptions};
 use serde::{Serialize, Deserialize};
+use config::*;
+use std::env;
 
 const MAX_CACHE_LEN: u32 = 1;
 const LOG_FMT_STRING: &'static str = "\\* [`%i`] %S-%E *%n* (%p)\n";
@@ -71,7 +73,7 @@ impl Block {
 		}
 	}
 
-	fn to_format(&self, fmt: &'static str) -> String {
+	fn to_format(&self, fmt: String) -> String {
 		let end: String;
 		match &self.end {
 			Some(e) => end = e.to_rfc2822(),
@@ -82,19 +84,12 @@ impl Block {
 			.replace("%s", &self.start.to_rfc2822())
 			.replace("%e", &end)
 			.replace("%S", &self.start.time().to_string().split(".").collect::<Vec<&str>>()[0]) // HACK
-			.replace("%E", &self.end.unwrap().time().to_string().split(".").collect::<Vec<&str>>()[0]) // HACK
+			.replace("%E", &self.end.unwrap_or(Local::now()).time().to_string().split(".").collect::<Vec<&str>>()[0]) // HACK
 			.replace("%N", &Local::now().to_rfc2822())
 			.replace("%n", &self.name)
 			.replace("%t", &self.tags.clone().into_iter().map(|t| t.to_string())
 					 .collect::<Vec<String>>().join(" ").clone())
 			.replace("%p", &self.project.clone().unwrap().to_string())				
-	}
-
-	fn get_duration(&self) -> Duration {
-		match self.end {
-			Some(x) => x.signed_duration_since(self.start),
-			None => Local::now().signed_duration_since(self.start),
-		}
 	}
 
 	fn stop(&mut self) {
@@ -114,6 +109,7 @@ fn write_stream(mut stream: &TcpStream, msg: String)
 }
 
 struct Handler {
+	settings: Config,
 	cache: Vec<Block>,
 	file: String,
 	current: Option<Block>
@@ -122,6 +118,7 @@ struct Handler {
 impl Handler {
 	fn new() -> Handler {
 		Handler {
+			settings: Config::default(),
 			cache: Vec::new(),
 			file: String::from("data.json"),
 			current: None,
@@ -194,21 +191,22 @@ impl Handler {
 	}
 
 	fn handle_get(&self, stream: &TcpStream, s: Specifier) {
+		let format: String = self.settings.get::<String>("get.format").unwrap_or(DISPLAY_FMT_STRING.to_string());
 		match s {
 			Specifier::Relative(rel) => {
 				if rel == 0 {
 					if let Some(i) = &self.current {
-						write_stream(stream, i.to_format(DISPLAY_FMT_STRING));
+						write_stream(stream, i.to_format(format.clone()));
 					} else {write_stream(stream, String::from("ERR: no existing block"));}
 				} else {									
-					write_stream(stream, self.get(rel).unwrap().to_format(DISPLAY_FMT_STRING));
+					write_stream(stream, self.get(rel).unwrap().to_format(format.clone()));
 				}
 			},
 			Specifier::Id(id) => {				
 				let ident = unpack(id.to_vec());
 				for block in self.iter() { 
 					if block.id.eq(&ident) {
-						write_stream(stream, block.to_format(DISPLAY_FMT_STRING));
+						write_stream(stream, block.to_format(format.clone()));
 					}
 				}
 				write_stream(stream, String::from("ERR: invalid ID"));
@@ -227,7 +225,7 @@ impl Handler {
 							date = i.start;
 							msg+=&format!("\n{}\n", i.start.date().format("%B %d, %Y"));
 						}
-						msg+=&i.to_format(LOG_FMT_STRING);
+						msg+=&i.to_format(self.settings.get::<String>("log.format").unwrap_or(LOG_FMT_STRING.to_string()));
 					}
 					write_stream(stream, format!("{:0width$}\n", msg.len(), width=64));
 					write_stream(stream, msg);
@@ -252,6 +250,7 @@ fn main() {
 		.log_to_file(FileSpec::default().basename("memexd").directory("logs"))
 		.start().unwrap();
 	let mut handler = Handler::new();
+	handler.settings.merge(File::with_name(&(env::var("HOME").unwrap()+"/.config/memex.toml"))).unwrap();	
 	let listener = TcpListener::bind("127.0.0.1:34254").unwrap();
 	for stream in listener.incoming() {
 		match stream {

@@ -6,16 +6,6 @@ use termimad::*;
 use std::net::TcpStream;
 use std::io::{Read, Write};
 
-// HACK this is really dumb
-
-fn unpack(mut s: Vec<u8>) -> String {
-	s.retain(|&x| x != 0);
-	match std::str::from_utf8(&s) {
-		Ok(x) => String::from(x),
-		Err(_x) => panic!("Failed to unpack."),
-	}
-}
-
 fn pack_attr(s: &String) -> std::result::Result<[u8; MAX_ATTR_NAME], &'static str> {
 	let chars: Vec<char> = s.chars().collect();
 	let length = chars.len();
@@ -214,7 +204,7 @@ fn main() {
 			let mut read_size: usize = 0;
 			let mut response: [u8; 4096] = [0; 4096];
 			loop {
-				let sz = stream.read(&mut response).unwrap();				
+				let sz = stream.read(&mut response).unwrap();
 				if sz > len-read_size {
 					log += &String::from_utf8(response[..len-read_size].to_vec()).unwrap();
 					break;
@@ -233,4 +223,3 @@ fn main() {
 		}
 	}
 }
-
