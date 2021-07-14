@@ -42,7 +42,7 @@ struct Project {
 	name: String
 }
 
-impl Project {	
+impl Project {
 	fn to_string(&self) -> String {
 		self.name.clone()
 	}
@@ -89,7 +89,7 @@ impl Block {
 			.replace("%n", &self.name)
 			.replace("%t", &self.tags.clone().into_iter().map(|t| t.to_string())
 					 .collect::<Vec<String>>().join(" ").clone())
-			.replace("%p", &self.project.clone().unwrap().to_string())				
+			.replace("%p", &self.project.clone().unwrap().to_string())
 	}
 
 	fn stop(&mut self) {
@@ -136,14 +136,14 @@ impl Handler {
 			let mut reader = std::io::BufReader::new(
 				OpenOptions::new().read(true).open(&self.file).unwrap());
 			let mut line = String::new();
-			for _i in self.cache.len()..rel {				
+			for _i in self.cache.len()..rel {
 				line.clear();
 				if let Err(_) = reader.read_line(&mut line) {
 					return Err("No block found.")
 				};
 			}
-			let out: Block = serde_json::from_str(&line.trim()).unwrap();			
-			return Ok(out.clone());			
+			let out: Block = serde_json::from_str(&line.trim()).unwrap();
+			return Ok(out.clone());
 		}
 	}
 
@@ -198,13 +198,13 @@ impl Handler {
 					if let Some(i) = &self.current {
 						write_stream(stream, i.to_format(format.clone()));
 					} else {write_stream(stream, String::from("ERR: no existing block"));}
-				} else {									
+				} else {
 					write_stream(stream, self.get(rel).unwrap().to_format(format.clone()));
 				}
 			},
-			Specifier::Id(id) => {				
+			Specifier::Id(id) => {
 				let ident = unpack(id.to_vec());
-				for block in self.iter() { 
+				for block in self.iter() {
 					if block.id.eq(&ident) {
 						write_stream(stream, block.to_format(format.clone()));
 					}
@@ -250,8 +250,8 @@ fn main() {
 		.log_to_file(FileSpec::default().basename("memexd").directory("logs"))
 		.start().unwrap();
 	let mut handler = Handler::new();
-	handler.settings.merge(File::with_name(&(env::var("HOME").unwrap()+"/.config/memex.toml"))).unwrap();	
-	let listener = TcpListener::bind("127.0.0.1:34254").unwrap();
+	handler.settings.merge(File::with_name(&(env::var("HOME").unwrap()+"/.config/memex.toml"))).unwrap();
+	let listener = TcpListener::bind("0.0.0.0:5000").unwrap();
 	for stream in listener.incoming() {
 		match stream {
 			Ok(mut stream) => {

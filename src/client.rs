@@ -98,6 +98,8 @@ fn get_block(mut stream: &TcpStream, spec: Specifier) -> std::result::Result<(),
 #[clap(version = "1.0", author = "quantumish")]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
+	#[clap(long, default_value="localhost")]
+	ip: String,
 	#[clap(subcommand)]
 	subcmd: QueryCmd,
 }
@@ -161,14 +163,14 @@ fn main() {
 	let mut skin = MadSkin::default();
 	skin.italic.set_fg(Green);
 	skin.bold.set_fg(Red);
-	let mut stream = TcpStream::connect("localhost:34254").unwrap();
+	let mut stream = TcpStream::connect(opts.ip.clone()+":5000").unwrap();
 	match opts.subcmd {
 		QueryCmd::Add(query) => {
 			match query.subcmd {
 				EntityCmd::Block(b) => {
 					if let Err(s) = add_block(&stream, b.name, b.project) {fail(&skin, "start new block", s);}
 					for tag in b.tags.split(",").map(str::to_string) {
-						let stream = TcpStream::connect("localhost:34254").unwrap();
+						let stream = TcpStream::connect(opts.ip.clone()+":5000").unwrap();
 						if let Err(s) = add_tag(&stream, tag) {fail(&skin, "add tag to new block", s);}
 					}
 					success(&skin, "started new block");
