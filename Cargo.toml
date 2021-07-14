@@ -11,17 +11,28 @@ path = "src/daemon.rs"
 name = "memex"
 path = "src/client.rs"
 
+[[bin]]
+name = "toggl-experiment"
+path = "src/toggl.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = {version="0.4", features = ["serde"]}
+chrono = { version="0.4", features = ["serde"] }
+nanoid = "0.4.0"
+
 clap = "3.0.0-beta.2"
 termimad = "0.10"
 crossterm = "0.19.0"
 minimad = "0.8.0"
-nanoid = "0.4.0"
+
 flexi_logger = "0.18.0"
 log = "0.4.14"
+
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
 config = "0.11"
+
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
