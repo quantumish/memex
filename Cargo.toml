@@ -11,9 +11,8 @@ path = "src/daemon.rs"
 name = "memex"
 path = "src/client.rs"
 
-[[bin]]
-name = "toggl-experiment"
-path = "src/toggl.rs"
+[features]
+toggl = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

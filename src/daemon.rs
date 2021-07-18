@@ -1,12 +1,16 @@
 pub mod requests;
 pub use crate::requests::*;
 
+#[cfg(feature = "toggl")]
+pub mod toggl;
+#[cfg(feature = "toggl")]
+pub use crate::toggl::*;
+
 use chrono::{Duration, DateTime, Local};
 use std::mem;
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write, BufRead};
-use nanoid::nanoid;
-use flexi_logger::*;
+use nanoid::nanoid;use flexi_logger::*;
 use log::*;
 use std::fs::{OpenOptions};
 use serde::{Serialize, Deserialize};
@@ -26,7 +30,7 @@ fn unpack(mut s: Vec<u8>) -> String {
 	}
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct Tag {
 	name: String
 }
@@ -112,7 +116,9 @@ struct Handler {
 	settings: Config,
 	cache: Vec<Block>,
 	file: String,
-	current: Option<Block>
+	current: Option<Block>,
+	#[cfg(feature = "toggl")]
+	toggl_cache: i64,
 }
 
 impl Handler {
@@ -122,6 +128,8 @@ impl Handler {
 			cache: Vec::new(),
 			file: String::from("data.json"),
 			current: None,
+			#[cfg(feature = "toggl")]
+			toggl_cache: 0,
 		}
 	}
 
@@ -147,7 +155,7 @@ impl Handler {
 		}
 	}
 
-	fn add_new(&mut self, name: String, proj: String) -> std::result::Result<(), &'static str> {
+	async fn add_new(&mut self, name: String, proj: String) -> std::result::Result<(), &'static str> {
 		if let Some(cur) = &mut self.current {
 			cur.stop();
 			self.cache.push(cur.clone());
@@ -167,18 +175,39 @@ impl Handler {
 		}
 		let mut tmp: Block = Block::new();
 		tmp.name = name;
-		tmp.project = Some(Project {name: proj});
-		self.current = Some(tmp);
+		tmp.project = Some(Project {name: proj}); // Questionable
+		if cfg!(feature = "toggl") {
+			let token = self.settings.get::<String>("toggl.api_token").unwrap();
+			let map = get_projects(token.clone(), self.settings.get::<u64>("toggl.default_workspace").unwrap()).await;
+			let pid: u64;
+			match tmp.project {
+				Some(ref p) => pid = get_proj_id(token.clone(), map, p.name.clone()).await,
+				None => pid = 0, 
+			}
+			set_toggl(token.clone(), tmp.name.clone(), pid).await;			
+		}
+		self.current = Some(tmp);		
 		Ok(())
 	}
 
-	fn handle_add(&mut self, stream: &TcpStream, e: Entity) {
+	async fn handle_add(&mut self, stream: &TcpStream, e: Entity) {		
 		match e {
-			Entity::Block(name, proj) =>
-				self.add_new(unpack(name.to_vec()), unpack(proj.to_vec())).unwrap(),
+			Entity::Block(name, proj) => 
+				self.add_new(unpack(name.to_vec()), unpack(proj.to_vec())).await.unwrap(),							
 			Entity::Tag(tag) => {
 				if let Some(i) = &mut self.current {
-					i.tags.push(Tag {name: unpack(tag.to_vec())})
+					i.tags.push(Tag {name: unpack(tag.to_vec())});
+					if cfg!(feature = "toggl") {
+						let token = self.settings.get::<String>("toggl.api_token").unwrap(); 
+						// HACK Make it so args are optional in update_toggl
+						let map = get_projects(token.clone(), self.settings.get::<u64>("toggl.default_workspace").unwrap()).await;
+						let pid: u64;
+						match &i.project {							
+							Some(p) => pid = get_proj_id(token.clone(), map, p.name.clone()).await,
+							None => pid = 0, 
+						}
+						update_toggl(token.clone(), i.name.clone(), i.tags.iter().map(|x| x.name.clone()).collect(), pid).await;
+					}
 				} else {write_stream(stream, String::from("ERR: no existing block"));}
 
 			}
@@ -233,7 +262,7 @@ impl Handler {
 				_ => (),
 			},
 			_ => (),
-		}
+		}		
 	}
 
 	fn iter(&self) -> std::iter::Chain<impl Iterator<Item = Block> + '_, impl Iterator<Item = Block>> {
@@ -245,7 +274,8 @@ impl Handler {
 	}
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	Logger::try_with_env_or_str("info").unwrap()
 		.log_to_file(FileSpec::default().basename("memexd").directory("logs"))
 		.start().unwrap();
@@ -262,7 +292,7 @@ fn main() {
 				}
 				unsafe {req = mem::transmute::<[u8; mem::size_of::<Request>()], Request>(buf);}
 				match req.query {
-					Query::ADD(e) => handler.handle_add(&stream, e),
+					Query::ADD(e) => handler.handle_add(&stream, e).await,
 					Query::GET(s) => handler.handle_get(&stream, s),
 					Query::LOG(r) => handler.handle_log(&stream, r),
 				}
