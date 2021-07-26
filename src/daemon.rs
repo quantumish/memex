@@ -21,6 +21,9 @@ const MAX_CACHE_LEN: u32 = 1;
 const LOG_FMT_STRING: &'static str = "\\* [`%i`] %S-%E *%n* (%p)\n";
 const DISPLAY_FMT_STRING: &'static str =
 	"[`%i`] *%n*\n**Start**: %s\n**Stop**: %e\n**Tags**: %t\n**Project**: %p\n";
+const ALPHABET: [char; 16] = [
+	'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f'
+];
 
 fn unpack(mut s: Vec<u8>) -> String {
 	s.retain(|&x| x != 0);
@@ -41,7 +44,7 @@ impl Tag {
 	}
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct Project {
 	name: String
 }
@@ -52,7 +55,7 @@ impl Project {
 	}
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Block {
 	name: String,
 	start: DateTime<Local>,
@@ -64,16 +67,13 @@ pub struct Block {
 
 impl Block {
 	fn new() -> Block {
-		let alphabet: [char; 16] = [
-			'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f'
-		];
 		Block {
 			name: String::new(),
 			start: Local::now(),
 			end: None,
 			tags: Vec::new(),
 			project: None,
-			id: nanoid!(8, &alphabet),
+			id: nanoid!(8, &ALPHABET),
 		}
 	}
 
@@ -93,7 +93,7 @@ impl Block {
 			.replace("%n", &self.name)
 			.replace("%t", &self.tags.clone().into_iter().map(|t| t.to_string())
 					 .collect::<Vec<String>>().join(" ").clone())
-			.replace("%p", &self.project.clone().unwrap().to_string())
+			.replace("%p", &self.project.clone().unwrap_or(Project {name: String::from("None")}).to_string())
 	}
 
 	fn stop(&mut self) {
@@ -117,8 +117,6 @@ struct Handler {
 	cache: Vec<Block>,
 	file: String,
 	current: Option<Block>,
-	#[cfg(feature = "toggl")]
-	toggl_cache: i64,
 }
 
 impl Handler {
@@ -128,8 +126,6 @@ impl Handler {
 			cache: Vec::new(),
 			file: String::from("data.json"),
 			current: None,
-			#[cfg(feature = "toggl")]
-			toggl_cache: 0,
 		}
 	}
 
@@ -155,7 +151,7 @@ impl Handler {
 		}
 	}
 
-	async fn add_new(&mut self, name: String, proj: String) -> std::result::Result<(), &'static str> {
+	fn stop_current(&mut self) {
 		if let Some(cur) = &mut self.current {
 			cur.stop();
 			self.cache.push(cur.clone());
@@ -163,7 +159,7 @@ impl Handler {
 				let mut writer = std::io::BufWriter::new(
 					OpenOptions::new().append(true).create(true).
 						open(self.file.clone()+&String::from(".tmp")).unwrap());
-				let mut reader = std::io::BufReader::new(
+				let reader = std::io::BufReader::new(
 					OpenOptions::new().read(true).open(&self.file).unwrap());
 				writer.write((serde_json::to_string(&self.cache[0]).unwrap()+"\n").as_bytes()).unwrap();
 				for line in reader.lines() {
@@ -173,6 +169,10 @@ impl Handler {
 				self.cache.drain(0..1);
 			}
 		}
+	}
+
+	async fn add_new(&mut self, name: String, proj: String) -> std::result::Result<(), &'static str> {
+		self.stop_current();
 		let mut tmp: Block = Block::new();
 		tmp.name = name;
 		tmp.project = Some(Project {name: proj}); // Questionable
@@ -280,7 +280,46 @@ async fn main() {
 		.log_to_file(FileSpec::default().basename("memexd").directory("logs"))
 		.start().unwrap();
 	let mut handler = Handler::new();
-	handler.settings.merge(File::with_name(&(env::var("HOME").unwrap()+"/.config/memex.toml"))).unwrap();
+	handler.settings.merge(File::with_name(&(env::var("HOME").unwrap()+"/.config/memex.toml"))).unwrap();	
+	unsafe {
+		struct HandlerWrapper {h: *mut Handler};
+		unsafe impl Send for HandlerWrapper {}
+		unsafe impl Sync for HandlerWrapper {}
+		let handler_wrapper = HandlerWrapper {h: &mut handler as *mut Handler};
+		std::thread::spawn(move || {
+			let mut last_entry: serde_json::Value = serde_json::json!(null);
+			loop {
+				std::thread::sleep(std::time::Duration::from_millis(1000));
+				match get_toggl((*handler_wrapper.h).settings.get::<String>("toggl.api_token").unwrap()) {
+					Some(entry) => {				
+						if last_entry == serde_json::json!(null) || entry["data"] != last_entry["data"] {
+							if last_entry["data"]["id"] != entry["data"]["id"] {								
+								(*handler_wrapper.h).stop_current();
+							}
+							(*handler_wrapper.h).current = Some(Block {
+								name: String::from(entry["data"]["description"].as_str().unwrap_or("")),
+								start: DateTime::parse_from_rfc3339(entry["data"]["start"].as_str().unwrap()).unwrap().with_timezone(&Local),
+								end: None,
+								project: match entry["data"]["pid"].as_u64() {
+									Some(e) => {
+										Some(Project {
+											name: get_project((*handler_wrapper.h).settings.get::<String>("toggl.api_token").unwrap(), e)
+										})
+									},
+									None => None,
+								},
+								tags: entry["data"]["tags"].as_array().unwrap_or(&Vec::new()).iter().map(
+									|x| Tag {name: String::from(x.as_str().unwrap())}).collect(),
+								id: nanoid!(8, &ALPHABET)
+							});
+							last_entry = entry["data"].clone();
+						}
+					},
+					None => (),
+				}
+			}
+		});	
+	}
 	let listener = TcpListener::bind("0.0.0.0:5000").unwrap();
 	for stream in listener.incoming() {
 		match stream {
